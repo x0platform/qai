@@ -1,0 +1,45 @@
+{
+  "name": "qai-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "QAI Automation Framework - Playwright + TypeScript + Cucumber (Gherkin) with API & Web test cases",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "packages/core",
+    "packages/web",
+    "packages/api",
+    "apps/test-app"
+  ],
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix",
+    "test": "cucumber-js",
+    "test:web": "cucumber-js --tags '@web'",
+    "test:api": "cucumber-js --tags '@api'",
+    "test:smoke": "cucumber-js --tags '@smoke'",
+    "test:regression": "cucumber-js --tags '@regression'",
+    "test:integration": "cucumber-js --tags '@integration'",
+    "test:headed": "HEADLESS=false cucumber-js",
+    "report:playwright": "playwright show-report reports/playwright-html",
+    "format": "prettier --write \"**/*.{ts,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,json,md}\""
+  },
+  "devDependencies": {
+    "@cucumber/cucumber": "^10.x",
+    "@cucumber/pretty-formatter": "^1.x",
+    "@playwright/test": "^1.x",
+    "@types/node": "^20.x",
+    "@typescript-eslint/eslint-plugin": "^7.x",
+    "@typescript-eslint/parser": "^7.x",
+    "eslint": "^8.x",
+    "eslint-config-prettier": "^9.x",
+    "eslint-plugin-prettier": "^5.x",
+    "playwright": "^1.x",
+    "prettier": "^3.x",
+    "typescript": "^5.x",
+    "pdf-parse": "^1.x"
+  }
+}

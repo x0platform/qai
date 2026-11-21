@@ -1,0 +1,86 @@
+==== Master Prompt ====
+help me create an automation framework using below technology stack:
+1. Gherkin written Features, scenarios
+2. Playwright + Typescript
+3. Sample Test Cases for API & Web
+4. Generating Playwright report with screenshot and text validation
+5. NodeJS LTS
+6. Industry standard test cases with tags assigned to each test cases in a scenario mapped to feature.
+
+## Special Request
+# I want to have a test case to validate pdf, to validate if the application allows pdf with 2mb and throws error response when the pdf with more than 2mb is validated via api test case.
+# I want to have a test case that is executed for 3 different set of dynamic data using scenario context
+# document runbook, implementation notes, technological stack 
+
+help me finalize the plan before we begain implementation, ask me questions until you believe you have all the required information to successfully accomplish the task
+==== Master Prompt ====
++ Thought: 3.6s
+I'm in Plan Mode — I'll only observe, analyze, and ask clarifying questions. No changes will be made yet.
+Here are the questions I need answered to finalize a solid implementation plan:
+Project & Repo
+1. Is this a brand-new repository or should the framework be added to an existing one? If existing, what's the repo structure/language setup?
+A1. Yes, it's a brand new repository. I want to follow the industry standards for this new repository.
+2. Where should the framework live (monorepo vs standalone)?
+A2. Monorepo.
+Web & API Targets
+3. What are the base URLs for the Web application and the API under test (QA/staging/prod)?
+A3. I want to use public url's available for automation testing.
+4. Which browsers should Web tests run against (Chromium, Firefox, WebKit)? Headless or headed by default?
+A4. By default run in headless and only in rerun should run in headed mode.
+5. What authentication mechanism do Web and API tests use (JWT, OAuth2, API key, session cookie, SSO)? Do you have test credentials available?
+Gherkin / Cucumber Setup
+A5. Based on the endpoint & web application finalized (from available public applications), I think we can take this decision.
+6. Which Gherkin runner do you prefer with Playwright (e.g., cucumber-playwright, @cucumber/pretty-formatter, or a custom step-definition runner)? Any strong preference?
+A6. help me with pros and cons for each, keeping in mind I would like to utilize playwright agents (Planner, Generator and Healer) to generate, execute and heal test automation. while keeping the framework industry standard.
+7. Should feature files live alongside step definitions, or in a separate features/ directory?
+A7. I would like to take suggestion here, what is industry standard to keep maintenance low with distingusih directories with defined purpose to hold things in framework.
+PDF Validation (API)
+8. What endpoint handles PDF upload/validation? What's the expected request format (multipart/form-data, raw binary)?
+A8. this should be decided based on A3.
+9. Which PDF parsing library would you prefer for asserting PDF contents (pdf-parse, pdfjs-dist, or another)?
+A9. help me suggest the best used by industry professionals to keep the library safe from vulnerabilities.
+10. For the >2MB error case, what HTTP status code and response body shape do you expect?
+A10. Everything must be captured and validated.
+Dynamic Data / Scenario Context
+11. Where does the 3-set dynamic data live (inline JSON/CSV fixture, external file, database, or API call)?
+A11. help me create sample using the endpoints selected in A3.
+12. Should "scenario context" mean Cucumber scenario outline examples, or a custom context object passed between steps?
+A12. I want to showcase how user cookies can be passed to multiple scenarios when executing test case with BDD.
+Reporting
+13. Playwright HTML report only, or also Allure/cucumber JSON? Should screenshots be captured on failure only, or on every step?
+A13. Playwright HTML report with Allure/cucumber JSON. for now let's capture screenshots for failures only and have validation at each step.
+14. Should text validation failures include a diff/snippet in the report?
+A14. Yes.
+Tags & Organization
+15. What tag naming convention do you want (e.g., @api, @web, @pdf, @smoke, @regression, @critical)? Any ticket-ID mapping (e.g., @TC-123)?
+A15. for now based on the type of platform being valiated first tag would be picked from (@web, @api), next tag is picked based on test suite it falls under (e.g. @regression, @smoke, @integration) and finally the scenario it belongs to with @S13TC001 where scenario 13 and test TC001 is being validation.
+CI/CD & Data
+16. Which CI platform will run these tests (GitHub Actions, GitLab CI, Jenkins, Azure DevOps)? How are tests triggered (on PR, nightly, manual)?
+A16. Github actions connected to self hosted with below configuration
+zero@dabba:~$ cat /etc/os-release 
+PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+NAME="Debian GNU/Linux"
+VERSION_ID="13"
+VERSION="13 (trixie)"
+VERSION_CODENAME=trixie
+DEBIAN_VERSION_FULL=13.8
+ID=debian
+HOME_URL="https://www.debian.org/"
+SUPPORT_URL="https://www.debian.org/support"
+BUG_REPORT_URL="https://bugs.debian.org/"
+17. Node LTS version preference (e.g., 20.x)?
+A17. Latest LTS version (making sure we have no vulnerabilities in the system) at nodejs level or at packages used in the project.
+18. Test data cleanup responsibility — does the framework need to delete uploaded PDFs after tests?
+A19. test data is always kept in the repository but after the validation is done and report is generated I want to archive generated report and publish it on github pages as soon as new file is available.
+
+## Help me with below before finalizing the plan
+1. Q: what is the coverage on CI/CD to make sure the project is built and made avaialble to test execution via podman (on playwright docker image).
+2. Documentation coverage level, tech stack coverage level, test case coverage level, Run book coverage level.
+3. I want to create a mini-github-agent to publish generated code after below checks are performed
+3.1. check for list of file type available in the project
+3.2. check for list of files updated in the repository, generate commit message by analysing the changes in each file.
+3.3. check each file type for compilation error. When compile time errors are observed. errors must be fixed and start again from 3.1.
+3.4. lint each file type available in the repository and list errors, lint warnings, lint score for each file type.
+3.5. everything listed in 3.4 must be done automatically when a pr is created from on branch to another e.g. development to main.
+4. optimized content with updates after the refinement for content between ==== Master Prompt ==== under file systemPrompt.txt
+
