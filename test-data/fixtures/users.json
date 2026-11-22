@@ -1,0 +1,34 @@
+{
+  "users": [
+    {
+      "id": "user1",
+      "username": "alice",
+      "password": "password123",
+      "role": "admin",
+      "endpoint": "/users/1",
+      "expectedStatus": 200
+    },
+    {
+      "id": "user2",
+      "username": "bob",
+      "password": "password123",
+      "role": "user",
+      "endpoint": "/users/2",
+      "expectedStatus": 200
+    },
+    {
+      "id": "user3",
+      "username": "carol",
+      "password": "password123",
+      "role": "user",
+      "endpoint": "/users/3",
+      "expectedStatus": 200
+    }
+  ],
+  "pdf": {
+    "validSizeMB": 2,
+    "invalidSizeMB": 2.1,
+    "validFileName": "valid-2mb.pdf",
+    "invalidFileName": "invalid-2mb-plus.pdf"
+  }
+}

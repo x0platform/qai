@@ -31,15 +31,20 @@
     "@cucumber/cucumber": "^10.x",
     "@cucumber/pretty-formatter": "^1.x",
     "@playwright/test": "^1.x",
+    "@types/multer": "^2.3.0",
     "@types/node": "^20.x",
     "@typescript-eslint/eslint-plugin": "^7.x",
     "@typescript-eslint/parser": "^7.x",
     "eslint": "^8.x",
     "eslint-config-prettier": "^9.x",
     "eslint-plugin-prettier": "^5.x",
+    "pdf-parse": "^1.x",
     "playwright": "^1.x",
     "prettier": "^3.x",
-    "typescript": "^5.x",
-    "pdf-parse": "^1.x"
+    "typescript": "^5.x"
+  },
+  "dependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "cookie-parser": "^1.4.7"
   }
 }

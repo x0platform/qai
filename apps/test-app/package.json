@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "express": "^4.x",
+    "cookie-parser": "^1.x",
     "multer": "^2.x"
   },
   "devDependencies": {
     "@types/express": "^4.x",
+    "@types/cookie-parser": "^1.x",
     "@types/node": "^20.x",
     "tsx": "^4.x",
     "typescript": "^5.x"
