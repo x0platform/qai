@@ -49,7 +49,7 @@ coverage/
 .env.*.local
 
 # Docker
-.dockerignore
+!.dockerignore
 
 # Turbo
 .turbo/

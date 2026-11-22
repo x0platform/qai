@@ -15,7 +15,7 @@ This document defines the complete technology stack, version policy, and vulnera
 | Test App Server | Express | 4.x / 5.x | In-repo test API + Web | Latest stable |
 | Multipart Handler | Multer | 2.x | PDF upload handling | CVE-patched (1.4.4-lts.1 → 2.x) |
 | Container Runtime | Podman | Debian 13 host | Rootless container execution | Host-managed |
-| Browser Image | `mcr.microsoft.com/playwright` | Latest | Playwright Docker image | Pinned digest in CI |
+| Browser Image | `mcr.microsoft.com/playwright:v1.65.1-noble` | 1.65.1 | Podman base image for CI | Tag pinned to locked Playwright version |
 | Linter | ESLint | 8.x | Static code analysis | Latest stable |
 | Formatter | Prettier | 3.x | Code formatting | Latest stable |
 | Type Checker | TypeScript (`tsc`) | 5.x | Compile-time validation | Latest stable |
@@ -33,10 +33,10 @@ The following transitive dependencies are monitored but not directly controlled:
 
 ## Version Pinning Strategy
 
-- **Node.js**: LTS only, resolved via `.nvmrc` or CI `setup-node` action
+- **Node.js**: 20 LTS pinned in `.nvmrc` and consumed by `setup-node` in CI
 - **Direct dependencies**: `^` (caret) for minor/patch, major locked manually after review
-- **Playwright browser image**: Pinned by digest in CI workflow
-- **Lockfile**: `package-lock.json` committed to repository
+- **Playwright browser image**: `mcr.microsoft.com/playwright:v1.65.1-noble` in `docker/playwright.Dockerfile`, rebuilt by CI
+- **Lockfile**: `package-lock.json` committed to repository; CI uses `npm ci`
 
 ## Vulnerability Management
 

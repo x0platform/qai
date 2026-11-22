@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm run audit:ci
+
+      - name: Typecheck
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build Playwright image
+        run: npm run docker:build
+
+      - name: Headless tests (Podman)
+        id: headless
+        run: npm run docker:test
+
+      - name: Headed rerun on failure
+        if: failure() && steps.headless.outcome == 'failure'
+        run: npm run docker:test:headed
+
+      - name: Archive reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            reports/cucumber-report.html
+            reports/cucumber-results.json
+            reports/playwright-html/**
+            reports/playwright-json/**
+            reports/junit/**
+          if-no-files-found: warn
+          retention-days: 30

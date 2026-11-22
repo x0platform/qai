@@ -1,0 +1,11 @@
+node_modules
+reports
+dist
+.git
+.gitignore
+*.log
+.DS_Store
+test-results
+playwright-report
+coverage
+.env*
