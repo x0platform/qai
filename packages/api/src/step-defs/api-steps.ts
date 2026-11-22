@@ -70,8 +70,9 @@ function getApiClient(world: ApiWorld): APIClient {
 // PDF Validation Steps
 // ============================================================================
 
-Given('a PDF file of {string}MB is prepared', function (this: ApiWorld, sizeMB: string) {
-  const size = parseFloat(sizeMB);
+Given('a PDF file of {string} is prepared', function (this: ApiWorld, sizeMB: string) {
+  const normalized = sizeMB.replace(/MB$/i, '').trim();
+  const size = parseFloat(normalized);
   if (isNaN(size)) {
     throw new Error(`Invalid PDF size: ${sizeMB}`);
   }
@@ -127,6 +128,29 @@ Then('the response body should contain {string}', function (this: ApiWorld, expe
 // ============================================================================
 // Dynamic Data + Cookie Context Steps
 // ============================================================================
+
+Given(
+  'I authenticate via API with username {string} and password {string}',
+  async function (this: ApiWorld, username: string, password: string) {
+    const apiClient = getApiClient(this);
+    const response = await apiClient.postJson('/api/login', { username, password });
+    const responseBody = await apiClient.text(response);
+    let parsedBody: unknown;
+    try {
+      parsedBody = JSON.parse(responseBody);
+    } catch {
+      parsedBody = responseBody;
+    }
+    this.lastResponse = { status: response.status(), body: parsedBody };
+    this.lastResponseText = responseBody;
+
+    // Persist cookies from browser context into shared TestContext for cross-scenario use
+    if (this.browserContext) {
+      const cookies = await this.browserContext.cookies();
+      testContext.setCookies('default', cookies);
+    }
+  }
+);
 
 Given('the shared context holds cookies from prior scenario', function (this: ApiWorld) {
   const sharedCookies = testContext.getCookies('default');
