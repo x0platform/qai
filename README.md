@@ -15,7 +15,7 @@ Industry-standard test automation framework for API and Web testing using **Gher
 | Test Application | Express | 2.x (multer) |
 | Container | Podman | Debian 13 host |
 | CI / CD | GitHub Actions (self-hosted) | — |
-| Reporting | Playwright HTML + Allure/Cucumber JSON | — |
+| Reporting | Cucumber HTML/JSON + Playwright HTML/JSON/JUnit | — |
 | Linting | ESLint | 8.x |
 | Formatting | Prettier | 3.x |
 
@@ -23,8 +23,9 @@ Industry-standard test automation framework for API and Web testing using **Gher
 
 ```
 qai-automation/
-├── .github/workflows/      # CI, PR validation (mini-agent), GitHub Pages
-├── docker/                 # Podman-ready Playwright image
+├── .github/workflows/      # ci.yml, pr-validation.yml, pages.yml
+├── docker/                 # Podman-ready Playwright image (playwright.Dockerfile)
+├── scripts/                # PR validation mini-agent, test-data generators
 ├── apps/test-app/          # In-repo test application (API + Web server)
 ├── packages/core/          # Shared config, API client, test context, utils
 ├── packages/web/           # Web step definitions, page objects
@@ -37,6 +38,7 @@ qai-automation/
 ├── systemPrompt.txt        # Agent/system instructions
 ├── playwright.config.ts    # Playwright configuration
 ├── tsconfig.json           # TypeScript configuration
+├── .nvmrc                  # Node LTS pin used by CI
 ├── .eslintrc.json          # ESLint configuration
 └── .prettierrc             # Prettier configuration
 ```
@@ -99,6 +101,13 @@ npm run test:integration
 
 # Run in headed mode (for debugging)
 npm run test:headed
+
+# Full CI sequence locally (clean install, typecheck, lint, tests)
+npm run ci
+
+# Build the Podman Playwright image and run tests inside it
+npm run docker:build
+npm run docker:test
 ```
 
 ### Test Application
@@ -120,14 +129,23 @@ Endpoints:
 ### Reports
 
 ```bash
+# View Cucumber HTML report (default BDD report)
+npm run report:cucumber
+
 # View Playwright HTML report
 npm run report:playwright
 
 # Reports are located in:
-#   reports/playwright-html/
-#   reports/playwright-json/
-#   reports/junit/
+#   reports/cucumber-report.html    (Cucumber HTML)
+#   reports/cucumber-results.json   (Cucumber JSON)
+#   reports/playwright-html/        (Playwright HTML, when used)
+#   reports/junit/                  (JUnit XML)
 ```
+
+Reporting behavior:
+- Screenshots attached on failure only (Cucumber report)
+- Text validation failures include Playwright expect diff (Expected/Received)
+- Allure results: not enabled by default; Cucumber JSON/HTML is the baseline. Allure can be added in a future phase if needed.
 
 ## Documentation Coverage
 
@@ -142,19 +160,23 @@ npm run report:playwright
 
 ## CI/CD
 
-GitHub Actions runs on self-hosted runners (Debian 13 trixie) using Podman + Playwright Docker image.
+GitHub Actions runs on self-hosted runners (Debian 13 trixie) using a pinned Playwright container image with Podman.
 
-Workflows:
-- `.github/workflows/ci.yml` — Build, test, report, publish to GitHub Pages
-- `.github/workflows/pr-validation.yml` — Mini-agent PR validation (dev → main)
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `.github/workflows/ci.yml` | Push/PR to `dev` or `main`, manual | Audit, typecheck, lint, build image, headless tests in Podman, headed rerun on failure, archive `test-reports` artifact |
+| `.github/workflows/pr-validation.yml` | PR `dev` → `main` | Mini-agent: file types, changed files + commit suggestion, compile/typecheck with fix loop, lint score, PR annotations and gate |
+| `.github/workflows/pages.yml` | Successful CI on `main`, manual with run id | Download `test-reports` and publish to the `gh-pages` branch |
+
+See `docs/RUNBOOK.md` for commands and `docs/report-publishing.md` for report/artifact details.
 
 ## Contributing
 
-1. Create a feature branch from `development`
+1. Create a feature branch from `dev`
 2. Implement changes with tests and documentation
 3. Ensure `npm run build`, `npm run lint`, and `npm test` pass
-4. Open a PR from your branch to `development`
-5. Mini-agent validates file types, compilation, linting on PR to `main`
+4. Open a PR from your branch to `dev`
+5. Open a PR `dev` → `main`; the mini-agent validates file types, compilation, linting, and gates the merge
 
 ## License
 

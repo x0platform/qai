@@ -20,9 +20,10 @@ Maps tags → features → scenarios → test cases → endpoints. Target: 100% 
 |-----|-------------|----------|--------------|----------|--------|-----------------|--------|
 | `@api @regression @S07TC001` | `features/api/pdf-validation.feature` | PDF upload size limit validation (2MB) | TC-001 | `/api/upload` | POST | 200 + `{status: "success"}` | Planned |
 | `@api @regression @S07TC002` | `features/api/pdf-validation.feature` | PDF upload size limit validation (>2MB) | TC-002 | `/api/upload` | POST | 413 + `{status: "error", message: "file too large"}` | Planned |
-| `@api @integration @S13TC001` | `features/api/dynamic-data.feature` | User flow with shared cookie context (data set 1) | TC-001 | `/users/1` | GET/POST | 200 | Planned |
-| `@api @integration @S13TC002` | `features/api/dynamic-data.feature` | User flow with shared cookie context (data set 2) | TC-002 | `/users/2` | GET/POST | 200 | Planned |
-| `@api @integration @S13TC003` | `features/api/dynamic-data.feature` | User flow with shared cookie context (data set 3) | TC-003 | `/users/3` | GET/POST | 200 | Planned |
+| `@api @integration @S13TC000` | `features/api/dynamic-data.feature` | Authenticate and establish shared cookie context | TC-000 | `/api/login` | POST | 200 | Implemented |
+| `@api @integration @S13TC001` | `features/api/dynamic-data.feature` | User flow with shared cookie context (data set 1) | TC-001 | `/api/users/1` | GET/POST | 200 | Implemented |
+| `@api @integration @S13TC002` | `features/api/dynamic-data.feature` | User flow with shared cookie context (data set 2) | TC-002 | `/api/users/2` | GET/POST | 200 | Implemented |
+| `@api @integration @S13TC003` | `features/api/dynamic-data.feature` | User flow with shared cookie context (data set 3) | TC-003 | `/api/users/3` | GET/POST | 200 | Implemented |
 
 ### PDF Size Validation Details
 
@@ -35,9 +36,9 @@ Maps tags → features → scenarios → test cases → endpoints. Target: 100% 
 
 | Scenario | Data Set | Payload | Endpoint | Cookie Context |
 |----------|----------|---------|----------|----------------|
-| `@S13TC001` | Set 1 | `{"name": "Alice"}` | `/users/1` | Cookies from prior scenario |
-| `@S13TC002` | Set 2 | `{"name": "Bob"}` | `/users/2` | Cookies from prior scenario |
-| `@S13TC003` | Set 3 | `{"name": "Carol"}` | `/users/3` | Cookies from prior scenario |
+| `@S13TC001` | Set 1 | `{"name": "Alice"}` | `/api/users/1` | Cookies from prior scenario |
+| `@S13TC002` | Set 2 | `{"name": "Bob"}` | `/api/users/2` | Cookies from prior scenario |
+| `@S13TC003` | Set 3 | `{"name": "Carol"}` | `/api/users/3` | Cookies from prior scenario |
 
 ---
 

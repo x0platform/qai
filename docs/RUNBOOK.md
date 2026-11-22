@@ -6,10 +6,11 @@ Operational runbook for local development, CI execution, Podman container manage
 
 1. [Local Execution](#local-execution)
 2. [CI Execution](#ci-execution)
-3. [Podman / Docker](#podman--docker)
-4. [Report Publishing](#report-publishing)
-5. [Troubleshooting](#troubleshooting)
-6. [Emergency Procedures](#emergency-procedures)
+3. [PR Validation Mini-Agent](#pr-validation-mini-agent)
+4. [Podman / Docker](#podman--docker)
+5. [Report Publishing](#report-publishing)
+6. [Troubleshooting](#troubleshooting)
+7. [Emergency Procedures](#emergency-procedures)
 
 ---
 
@@ -41,6 +42,9 @@ npm run lint           # ESLint
 | `npm run test:regression` | Regression suite (`@regression` tag) |
 | `npm run test:integration` | Integration suite (`@integration` tag) |
 | `npm run test:headed` | Headed mode (for debugging) |
+| `npm run test:ci` | CI test entry point (same suite, `CI`/`HEADLESS` from environment) |
+| `npm run ci` | Clean install + typecheck + lint + tests |
+| `npm run audit:ci` | Production dependency audit (high+) |
 
 ### Environment Variables
 
@@ -82,59 +86,105 @@ lsof -ti:3000 | xargs kill -9
 - **Platform**: GitHub Actions self-hosted
 - **OS**: Debian GNU/Linux 13 (trixie)
 - **Container**: Podman (rootless)
-- **Image**: `mcr.microsoft.com/playwright:v1.xx-jammy`
+- **Image**: locally built `qai/playwright:local` from `docker/playwright.Dockerfile`
+- **Base image**: `mcr.microsoft.com/playwright:v1.65.1-noble` (matches locked Playwright 1.65.1)
+- **Node**: pinned by `.nvmrc` (20 LTS)
 
 ### Workflow: `.github/workflows/ci.yml`
 
 Stages:
 1. Checkout source
-2. Setup Node LTS
+2. Setup Node from `.nvmrc` with npm cache
 3. `npm ci` (clean install from lockfile)
-4. `npm run build` (TypeScript typecheck)
-5. `npm run lint` (ESLint)
-6. Pull Playwright image via Podman
-7. Run Cucumber + Playwright tests headless
-8. On failure: headed retry
-9. Generate Playwright HTML + Allure/cucumber JSON
-10. Archive `reports/` as workflow artifact
-11. Publish to GitHub Pages (separate `pages.yml`)
+4. `npm run audit:ci` (production audit, fails on high/critical)
+5. `npm run build` (TypeScript typecheck)
+6. `npm run lint` (ESLint; 0 errors required)
+7. `npm run docker:build` (Podman image build)
+8. `npm run docker:test` (Cucumber + Playwright headless)
+9. On headless failure: `npm run docker:test:headed` (`xvfb-run -a`, reports preserved)
+10. Archive `test-reports` artifact (30-day retention)
+11. Successful `main` runs trigger `.github/workflows/pages.yml`
 
 ### Trigger Conditions
 
-- Push to `development` → CI run (no deploy)
-- PR `development` → `main` → PR validation + CI run
-- Push to `main` → CI run + report publish to GitHub Pages
-- Manual `workflow_dispatch` → On-demand run
+- Push to `dev` → CI run (no deploy)
+- PR to `dev` → CI run (no deploy)
+- PR `dev` → `main` → CI run + mini-agent validation
+- Push to `main` → CI run → Pages publish via `workflow_run`
+- Manual `workflow_dispatch` → on-demand CI run
+
+### Artifact
+
+`test-reports` contains `reports/cucumber-report.html`, `reports/cucumber-results.json`, and the `reports/playwright-html/`, `reports/playwright-json/`, and `reports/junit/` trees.
+
+---
+
+## PR Validation Mini-Agent
+
+### Workflow: `.github/workflows/pr-validation.yml`
+
+Runs on PRs opened from `dev` into `main` in the same repository. Fork PRs are skipped because self-hosted runners do not execute untrusted code.
+
+| Step | Check | Output |
+|------|-------|--------|
+| 3.1 | Classify changed files by type | File-type table in job summary and PR comment |
+| 3.2 | List changed files | Conventional commit suggestion |
+| 3.3 | `npm run build`; on failure run `eslint --fix` + Prettier on changed files, then retry (`PR_FIX_ATTEMPTS`, default 1) | Compile status per attempt |
+| 3.4 | ESLint JSON on changed source files; JSON/YAML/Gherkin/Dockerfile validity checks | Errors, warnings, and 0-100 score per check |
+| 3.5 | Gate on error count | `::error`/`::warning` annotations, PR comment, job pass/fail |
+
+The agent writes annotations through GitHub workflow commands, posts the full report as a PR comment, and exports `gate`, `lint_score`, and `commit_suggestion` as step outputs. Auto-fixes are workspace-only; the agent never pushes commits.
+
+Run locally against the previous commit:
+
+```bash
+BASE_REF=HEAD~1 npx tsx scripts/pr-validation.ts
+```
+
+Or target specific files:
+
+```bash
+CHANGED_FILES="features/web/login.feature,packages/core/src/config.ts" npx tsx scripts/pr-validation.ts
+```
 
 ---
 
 ## Podman / Docker
 
-### Pull Playwright Image
+### Build Custom Playwright Image
 
 ```bash
-podman pull mcr.microsoft.com/playwright:v1.xx-jammy
+# From the repository root; uses docker/playwright.Dockerfile
+npm run docker:build
 ```
+
+The image installs workspace dependencies from `package-lock.json` and includes the Playwright browsers from the pinned base image.
 
 ### Run Tests in Podman Container
 
 ```bash
-podman run --rm \
+# Headless (CI entry point)
+npm run docker:test
+
+# Headed rerun with virtual display (used when headless CI fails)
+npm run docker:test:headed
+```
+
+Equivalent raw command:
+
+```bash
+podman run --rm --init --ipc=host \
   --name qai-playwright \
-  -v $(pwd):/workspace:z \
+  -v "$(pwd):/workspace:z" \
   -w /workspace \
   -e HEADLESS=true \
   -e CI=true \
-  mcr.microsoft.com/playwright:v1.xx-jammy \
-  npm ci && npm run build && npm test
+  -e BASE_URL=http://localhost:3000 \
+  qai/playwright:local \
+  npm run test:ci
 ```
 
-### Build Custom Playwright Image
-
-```bash
-cd docker
-podman build -t qai/playwright:latest -f playwright.Dockerfile .
-```
+The container runs as root, which maps to the rootless host user; this keeps generated report files writable by the runner.
 
 ### Container Cleanup
 
@@ -166,36 +216,58 @@ cat /etc/subgid | grep <runner-user>
 
 ## Report Publishing
 
+### Cucumber HTML / JSON (primary BDD reports)
+
+Generated at:
+- `reports/cucumber-report.html`
+- `reports/cucumber-results.json`
+
+View locally:
+```bash
+npm run report:cucumber
+# or open reports/cucumber-report.html
+```
+
+Notes:
+- Failure screenshots are attached to the Cucumber report (captured in After hook).
+- Text validation failures surface Playwright expect diffs (Expected/Received) in the report.
+- Cucumber JSON/HTML is the baseline reporting format.
+
 ### Playwright HTML Report
 
 Generated at: `reports/playwright-html/`
 
 View locally:
 ```bash
-npx playwright show-report reports/playwright-html
+npm run report:playwright
 ```
 
-### Allure / Cucumber JSON
+### Allure (optional)
 
-Generated at: `reports/playwright-json/` and `reports/junit/`
+Allure is not enabled by default. If added, emit Allure results under `reports/allure-results/` and publish via a separate CI step.
 
 ### GitHub Pages Publishing
 
-Reports are archived as workflow artifacts and published to GitHub Pages automatically when a new report file is available.
+Reports are archived by `ci.yml` as the `test-reports` artifact. `pages.yml` publishes them after a successful CI run on `main`.
 
 Workflow: `.github/workflows/pages.yml`
 
-1. Download `reports/` artifact from CI
-2. Copy HTML report to `gh-pages` branch
-3. Push to `gh-pages` → GitHub Pages serves at `https://<org>.github.io/qai-automation/`
+1. Resolve the source CI run (workflow run id, manual `run_id` input, or latest successful `CI` run)
+2. Download the `test-reports` artifact
+3. Publish its contents to the `gh-pages` branch (orphan branch, files replaced)
+4. GitHub Pages serves at `https://<org>.github.io/qai-automation/`
+
+Manual publish with a specific report run:
+
+```bash
+gh workflow run pages.yml -f run_id=<ci-run-id>
+```
 
 ### Artifact Retention
 
 | Artifact | Retention | Location |
 |----------|-----------|----------|
-| Playwright HTML | 30 days | GitHub Actions artifact |
-| Playwright JSON | 30 days | GitHub Actions artifact |
-| JUnit XML | 30 days | GitHub Actions artifact |
+| `test-reports` (Cucumber HTML/JSON, Playwright HTML/JSON, JUnit XML) | 30 days | GitHub Actions artifact |
 | GitHub Pages site | Indefinite | `gh-pages` branch |
 
 ---
@@ -229,6 +301,20 @@ npm run lint
 - Auto-fix: `npm run lint:fix`
 - Manual: Review and fix each error in `.eslintrc.json` rules
 - Prettier conflicts: Run `npm run format`
+
+### Issue: Mini-agent gate fails on a PR
+
+**Symptoms**: `.github/workflows/pr-validation.yml` fails with annotations and a `FAIL` gate
+
+**Diagnosis**:
+- Open the PR comment or job summary for the 3.1-3.5 report
+- Check ESLint/file errors annotated on changed lines
+- Verify the base branch ref is fetched (`fetch-depth: 0` in checkout)
+
+**Resolution**:
+- Fix annotated errors and push to the `dev` head branch
+- If auto-fix was applied locally, review the diff before pushing
+- Confirm the PR is `dev` → `main` from the same repository
 
 ### Issue: Playwright browser not found
 

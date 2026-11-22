@@ -37,6 +37,7 @@ docs/                 # STACK, RUNBOOK, traceability, report-publishing
 12. Traceability matrix (`docs/traceability.md`) must be updated for every new scenario
 
 ## Report Publishing
-- Playwright HTML + Allure/Cucumber JSON generated on every run
-- Reports archived as GitHub Actions artifacts (30-day retention)
-- Published to GitHub Pages (`gh-pages` branch) on push to `main` or workflow_dispatch
+- Cucumber HTML/JSON (`reports/cucumber-report.html`, `reports/cucumber-results.json`) plus Playwright HTML/JSON/JUnit generated on every run
+- `ci.yml` archives them as the `test-reports` artifact (30-day retention)
+- `pages.yml` publishes that artifact to the `gh-pages` branch after successful CI on `main` or manual dispatch
+- `pr-validation.yml` mini-agent gates PRs from `dev` to `main` with file-type checks, typecheck/fix loop, lint score, and annotations
