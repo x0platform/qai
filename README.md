@@ -120,14 +120,23 @@ Endpoints:
 ### Reports
 
 ```bash
+# View Cucumber HTML report (default BDD report)
+npm run report:cucumber
+
 # View Playwright HTML report
 npm run report:playwright
 
 # Reports are located in:
-#   reports/playwright-html/
-#   reports/playwright-json/
-#   reports/junit/
+#   reports/cucumber-report.html    (Cucumber HTML)
+#   reports/cucumber-results.json   (Cucumber JSON)
+#   reports/playwright-html/        (Playwright HTML, when used)
+#   reports/junit/                  (JUnit XML)
 ```
+
+Reporting behavior:
+- Screenshots attached on failure only (Cucumber report)
+- Text validation failures include Playwright expect diff (Expected/Received)
+- Allure results: not enabled by default; Cucumber JSON/HTML is the baseline. Allure can be added in a future phase if needed.
 
 ## Documentation Coverage
 

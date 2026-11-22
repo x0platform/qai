@@ -24,6 +24,7 @@
     "test:integration": "cucumber-js --tags '@integration'",
     "test:headed": "HEADLESS=false cucumber-js",
     "report:playwright": "playwright show-report reports/playwright-html",
+    "report:cucumber": "open reports/cucumber-report.html",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,js,json,md}\""
   },

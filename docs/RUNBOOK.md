@@ -166,18 +166,35 @@ cat /etc/subgid | grep <runner-user>
 
 ## Report Publishing
 
+### Cucumber HTML / JSON (primary BDD reports)
+
+Generated at:
+- `reports/cucumber-report.html`
+- `reports/cucumber-results.json`
+
+View locally:
+```bash
+npm run report:cucumber
+# or open reports/cucumber-report.html
+```
+
+Notes:
+- Failure screenshots are attached to the Cucumber report (captured in After hook).
+- Text validation failures surface Playwright expect diffs (Expected/Received) in the report.
+- Cucumber JSON/HTML is the baseline reporting format.
+
 ### Playwright HTML Report
 
 Generated at: `reports/playwright-html/`
 
 View locally:
 ```bash
-npx playwright show-report reports/playwright-html
+npm run report:playwright
 ```
 
-### Allure / Cucumber JSON
+### Allure (optional)
 
-Generated at: `reports/playwright-json/` and `reports/junit/`
+Allure is not enabled by default. If added, emit Allure results under `reports/allure-results/` and publish via a separate CI step.
 
 ### GitHub Pages Publishing
 

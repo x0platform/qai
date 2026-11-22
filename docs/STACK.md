@@ -19,6 +19,7 @@ This document defines the complete technology stack, version policy, and vulnera
 | Linter | ESLint | 8.x | Static code analysis | Latest stable |
 | Formatter | Prettier | 3.x | Code formatting | Latest stable |
 | Type Checker | TypeScript (`tsc`) | 5.x | Compile-time validation | Latest stable |
+| Reporting | Cucumber HTML + JSON (baseline) | Cucumber 10.x | BDD execution reports, failure screenshots | Built-in; Allure optional |
 
 ## Transitive Dependencies
 
