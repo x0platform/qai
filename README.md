@@ -10,12 +10,12 @@ Industry-standard test automation framework for API and Web testing using **Gher
 | Language | TypeScript | 5.x |
 | Browser Automation | Playwright | 1.x |
 | BDD / Gherkin Runner | Cucumber.js | 10.x |
-| Formatter | `@cucumber/pretty-formatter` | 1.x |
+| Formatter | `@cucumber/pretty-formatter` | 1.0.1 (optional, not configured) |
 | PDF Parsing | pdf-parse | 1.x |
 | Test Application | Express | 2.x (multer) |
 | Container | Podman | Debian 13 host |
 | CI / CD | GitHub Actions (self-hosted) | — |
-| Reporting | Cucumber HTML/JSON + Playwright HTML/JSON/JUnit | — |
+| Reporting | Cucumber HTML/JSON (baseline) | — |
 | Linting | ESLint | 8.x |
 | Formatting | Prettier | 3.x |
 
@@ -33,7 +33,7 @@ qai-automation/
 ├── features/               # Gherkin .feature files (web/, api/)
 ├── support/                # Cucumber World, hooks (screenshots, context)
 ├── test-data/              # PDFs (2MB, >2MB), JSON fixtures
-├── reports/                # Playwright HTML, JSON, JUnit outputs
+├── reports/                # Cucumber HTML + JSON outputs (gitignored)
 ├── docs/                   # STACK, RUNBOOK, traceability, report-publishing
 ├── systemPrompt.txt        # Agent/system instructions
 ├── playwright.config.ts    # Playwright configuration
@@ -124,28 +124,25 @@ npm start
 
 Endpoints:
 - `POST /api/upload` — PDF upload (≤2MB → 200, >2MB → 413)
-- Web routes: login, dashboard, cookie-setting
+- `POST /api/login` — session cookie issuance; `GET /dashboard` — session-protected page
+- `GET|POST /api/users/:id` — cookie-dependent user data
 
 ### Reports
 
 ```bash
-# View Cucumber HTML report (default BDD report)
+# View Cucumber HTML report (the generated report for npm test)
 npm run report:cucumber
-
-# View Playwright HTML report
-npm run report:playwright
 
 # Reports are located in:
 #   reports/cucumber-report.html    (Cucumber HTML)
 #   reports/cucumber-results.json   (Cucumber JSON)
-#   reports/playwright-html/        (Playwright HTML, when used)
-#   reports/junit/                  (JUnit XML)
 ```
 
 Reporting behavior:
-- Screenshots attached on failure only (Cucumber report)
+- Screenshots attached to the Cucumber report on failure only (via `After` hook)
 - Text validation failures include Playwright expect diff (Expected/Received)
-- Allure results: not enabled by default; Cucumber JSON/HTML is the baseline. Allure can be added in a future phase if needed.
+- `playwright.config.ts` holds browser settings and reporter definitions for a future Playwright test suite; `npm test` runs Cucumber, so Playwright/JUnit reports are not generated today
+- Allure is not enabled; Cucumber HTML/JSON is the published baseline
 
 ## Documentation Coverage
 

@@ -35,6 +35,9 @@ jobs:
       - name: Audit production dependencies
         run: npm run audit:ci
 
+      - name: Audit all dependencies for critical advisories
+        run: npm run audit:all
+
       - name: Typecheck
         run: npm run build
 
@@ -60,8 +63,5 @@ jobs:
           path: |
             reports/cucumber-report.html
             reports/cucumber-results.json
-            reports/playwright-html/**
-            reports/playwright-json/**
-            reports/junit/**
           if-no-files-found: warn
           retention-days: 30
