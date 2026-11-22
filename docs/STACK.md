@@ -1,93 +1,96 @@
 # Technology Stack — QAI Automation Framework
 
-This document defines the complete technology stack, version policy, and vulnerability management approach for the QAI Automation Framework.
+Source of truth for installed versions, pinning policy, and vulnerability management. Versions below are the exact versions resolved in `package-lock.json`.
 
 ## Core Stack
 
-| Category | Technology | Version | Purpose | Security Policy |
-|----------|-----------|---------|---------|-----------------|
-| Runtime | Node.js | LTS (v20+) | JavaScript runtime | Latest LTS, monthly CVE scan |
-| Language | TypeScript | 5.x | Type-safe source code | Latest minor, strict mode |
-| Test Runner | Playwright | 1.x | Browser & API automation | Latest stable |
-| BDD Runner | Cucumber.js | 10.x | Gherkin feature execution | Latest stable |
-| Formatter | `@cucumber/pretty-formatter` | 1.x | Cucumber output formatting | Latest stable |
-| PDF Parser | pdf-parse | 1.x | PDF text/content extraction | Latest stable, audit-scanned |
-| Test App Server | Express | 4.x / 5.x | In-repo test API + Web | Latest stable |
-| Multipart Handler | Multer | 2.x | PDF upload handling | CVE-patched (1.4.4-lts.1 → 2.x) |
-| Container Runtime | Podman | Debian 13 host | Rootless container execution | Host-managed |
-| Browser Image | `mcr.microsoft.com/playwright:v1.65.1-noble` | 1.65.1 | Podman base image for CI | Tag pinned to locked Playwright version |
-| Linter | ESLint | 8.x | Static code analysis | Latest stable |
-| Formatter | Prettier | 3.x | Code formatting | Latest stable |
-| Type Checker | TypeScript (`tsc`) | 5.x | Compile-time validation | Latest stable |
-| Reporting | Cucumber HTML + JSON (baseline) | Cucumber 10.x | BDD execution reports, failure screenshots | Built-in; Allure optional |
+| Category | Technology | Locked Version | Purpose | Status |
+|----------|-----------|----------------|---------|--------|
+| Runtime (host tooling) | Node.js | 20 (`.nvmrc`) | `npm ci`, typecheck, lint, mini-agent | Required |
+| Runtime (test container) | Node.js | bundled in `mcr.microsoft.com/playwright:v1.65.1-noble` (currently 26) | Cucumber test execution | Required |
+| Language | TypeScript | 5.9.3 | Type-safe source code | Active |
+| Browser/API automation | Playwright | 1.65.1 | Chromium sessions via Cucumber hooks | Active |
+| BDD runner | `@cucumber/cucumber` | 10.9.0 | Gherkin execution and reporting | Active |
+| PDF parser | `pdf-parse` | 1.1.4 | Planned PDF content assertions | Installed, not currently imported |
+| Formatter | `@cucumber/pretty-formatter` | 1.0.1 | Optional Cucumber output formatter | Installed, not configured in `cucumber.js` |
+| Test app server | Express | 4.22.3 | In-repo API + web server | Active |
+| Multipart handler | Multer | 2.5.0 | PDF upload handling | Active |
+| TypeScript runner | `tsx` | 4.23.15 | Executes TS hooks/scripts | Active |
+| Container runtime | Podman | host-managed (Debian 13) | Rootless container execution | Required for CI |
+| Browser image | `mcr.microsoft.com/playwright:v1.65.1-noble` | 1.65.1 | Podman base image | Active |
+| Linter | ESLint | 8.57.1 | Static analysis | Active |
+| Lint plugins | `@typescript-eslint/*` | 7.18.0 | TypeScript lint rules | Active |
+| Formatter | Prettier | 3.10.1 | Code formatting | Active |
+| Reporting | Cucumber HTML + JSON | Cucumber 10.9.0 | BDD reports, failure screenshots | Active baseline |
 
-## Transitive Dependencies
+## Monitored Transitive Dependencies
 
-The following transitive dependencies are monitored but not directly controlled:
+| Dependency | Locked Version | Severity | Source | Mitigation |
+|------------|----------------|----------|--------|------------|
+| `tmp` | 0.2.3 | High | `@cucumber/cucumber` | Dev-only; no non-breaking fix (audit suggests a major downgrade to Cucumber 9.6.0). Accepted and monitored. |
+| `uuid` | 9.0.1 | Moderate | `@cucumber/messages` | Dev-only; fixed via `@cucumber/cucumber` 9.6.0 downgrade. Accepted and monitored. |
+| `glob` | 10.5.0 | Moderate | `@cucumber/cucumber` | Dev-only; covered by the Cucumber advisory. Accepted and monitored. |
+| `minimatch` | 9.0.9 | Moderate | `@cucumber/cucumber`, `@typescript-eslint/*` | Dev-only; no non-breaking fix. Accepted and monitored. |
 
-| Dependency | Severity | Source | Mitigation |
-|------------|----------|--------|------------|
-| `tmp` | High | `@cucumber/cucumber` | Awaiting Cucumber non-breaking patch |
-| `uuid` | Moderate | `@cucumber/messages` | Monitored, non-breaking update pending |
-| `glob` / `minimatch` | Moderate | Multiple | Monitored, non-breaking update pending |
+All other reported moderate advisories (`@cucumber/gherkin`, `@cucumber/gherkin-utils`, `@typescript-eslint/parser`, `@typescript-eslint/type-utils`, `@typescript-eslint/typescript-estree`, `@typescript-eslint/utils`) are transitive chains of the packages above.
 
 ## Version Pinning Strategy
 
-- **Node.js**: 20 LTS pinned in `.nvmrc` and consumed by `setup-node` in CI
-- **Direct dependencies**: `^` (caret) for minor/patch, major locked manually after review
-- **Playwright browser image**: `mcr.microsoft.com/playwright:v1.65.1-noble` in `docker/playwright.Dockerfile`, rebuilt by CI
-- **Lockfile**: `package-lock.json` committed to repository; CI uses `npm ci`
+- **Host Node.js**: 20 LTS in `.nvmrc`; `setup-node` in `ci.yml`, `pr-validation.yml`, and `pages.yml` uses `node-version-file: .nvmrc`.
+- **Engines**: `package.json` declares `node >=20.0.0` for host tooling.
+- **Test runtime Node**: provided by the pinned Playwright container image; not controlled by `.nvmrc`.
+- **Playwright image and npm Playwright version**: both 1.65.1, upgraded together.
+- **Dependencies**: caret ranges in manifests with exact resolution in committed `package-lock.json`; CI uses `npm ci`.
+- **Dependabot/Scheduled scans**: not configured; audits are manual and run on every CI invocation (see below).
 
 ## Vulnerability Management
 
 ### Scanning
 
 ```bash
-# Audit production dependencies
-npm audit --omit=dev
-
-# Audit all dependencies
-npm audit
-
-# Fix non-breaking vulnerabilities
-npm audit fix
-
-# Force fix (breaking changes require review)
-npm audit fix --force
+npm run audit:ci   # production dependencies, fails on high/critical
+npm run audit:all  # all dependencies, fails on critical only
+npm audit          # full report, informational
 ```
+
+CI runs both gated commands. The full audit currently reports 0 critical, 1 high, and 12 moderate advisories, all reachable only through devDependencies; production audit is clean.
 
 ### Policy
 
-1. **Critical/High vulnerabilities in direct dependencies** — Must be resolved before merge
-2. **Moderate vulnerabilities in direct dependencies** — Resolve within one sprint
-3. **Transitive vulnerabilities** — Monitored; resolved via `npm audit fix` when non-breaking
-4. **Breaking-change fixes** — Require PR with impact assessment and team approval
-5. **Monthly scan** — Automated `npm audit` scheduled in CI
+1. **Critical advisories (any scope)** — block merge; `audit:all` enforces this.
+2. **High/moderate advisories in production dependencies** — block merge; `audit:ci` enforces this.
+3. **Dev-only advisories** — reviewed and documented in this file; upgrade when a non-breaking fix exists.
+4. **Breaking-change fixes** — require a PR with impact assessment and team approval.
+5. **Review cadence** — manual `npm audit` before dependency upgrades and during Phase-style hardening passes; no scheduled workflow is configured.
 
 ### Current Known Issues
 
-| Vulnerability | Severity | Dependency | Status |
-|--------------|----------|------------|--------|
-| `tmp` path traversal / symlink write | High | `@cucumber/cucumber` (transitive) | Open — awaiting Cucumber patch |
-| `uuid` buffer bounds check | Moderate | `@cucumber/cucumber` (transitive) | Open — non-breaking update pending |
+| Advisory | Severity | Dependency | Status |
+|----------|----------|------------|--------|
+| Arbitrary temp file/directory write + path traversal | High | `tmp` 0.2.3 via `@cucumber/cucumber` | Open — dev-only, accepted; upstream fix requires major downgrade |
+| Missing buffer bounds check in v3/v5/v6 | Moderate | `uuid` 9.0.1 via `@cucumber/messages` | Open — dev-only, monitored |
+| Glob traversal / ReDoS | Moderate | `glob` 10.5.0 + `minimatch` 9.0.9 | Open — dev-only, monitored |
+| `@typescript-eslint` chain advisories | Moderate | `@typescript-eslint/*` 7.18.0 via `minimatch` | Open — dev-only, monitored |
 
 ## Browser Support
 
-| Browser | Playwright Device | Headless Default | Headed on Rerun |
-|---------|------------------|------------------|-----------------|
-| Chromium | Desktop Chrome | Yes | Yes |
-| Firefox | Desktop Firefox | Yes | Yes |
-| WebKit | Desktop Safari | Yes | Yes |
+| Browser | Playwright Device | Cucumber Suite | Configured in `playwright.config.ts` |
+|---------|------------------|----------------|--------------------------------------|
+| Chromium | Desktop Chrome | Active (`chromium.launch` in `support/hooks.ts`) | Yes |
+| Firefox | Desktop Firefox | Not used by Cucumber | Yes (future Playwright suite) |
+| WebKit | Desktop Safari | Not used by Cucumber | Yes (future Playwright suite) |
+
+Headless is the default; `HEADLESS=false` is available for debugging and the CI headed rerun via `xvfb-run`.
 
 ## Compatibility
 
-- **Node.js**: LTS even-numbered releases (20, 22, ...)
-- **Operating Systems**: Linux (Debian 13+), macOS, Windows (CI via self-hosted Linux only)
-- **Container**: Rootless Podman on Debian 13 trixie
+- **Host tooling**: Node.js 20 LTS (even-numbered LTS upgrades are supported via `.nvmrc`).
+- **Operating systems**: Linux (Debian 13+ for self-hosted CI), macOS; Windows is not used for CI.
+- **Container**: rootless Podman on Debian 13 trixie.
 
 ## Maintenance
 
-- Stack review: Quarterly
-- Dependency updates: Monthly (via Dependabot or manual)
-- Security scan: Weekly (CI) + on every PR
-- Deprecation tracking: Active via `npm outdated` and GitHub Dependabot alerts
+- Stack review: quarterly or at each phase boundary.
+- Dependency updates: manual PRs; no Dependabot configuration in this repository.
+- Security scan: `npm run audit:ci` + `npm run audit:all` on every CI run; `npm audit` manually as needed.
+- Deprecation tracking: `npm outdated` during maintenance passes.

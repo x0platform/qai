@@ -36,8 +36,6 @@ playwright-report/
 allure-results/
 test-results/
 *.html
-!reports/.gitkeep
-!playwright-report/.gitkeep
 
 # Coverage
 coverage/

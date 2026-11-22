@@ -88,7 +88,7 @@ lsof -ti:3000 | xargs kill -9
 - **Container**: Podman (rootless)
 - **Image**: locally built `qai/playwright:local` from `docker/playwright.Dockerfile`
 - **Base image**: `mcr.microsoft.com/playwright:v1.65.1-noble` (matches locked Playwright 1.65.1)
-- **Node**: pinned by `.nvmrc` (20 LTS)
+- **Node**: host tooling pinned by `.nvmrc` (20 LTS); test execution uses the Node runtime bundled in the Playwright base image (currently Node 26)
 
 ### Workflow: `.github/workflows/ci.yml`
 
@@ -96,7 +96,7 @@ Stages:
 1. Checkout source
 2. Setup Node from `.nvmrc` with npm cache
 3. `npm ci` (clean install from lockfile)
-4. `npm run audit:ci` (production audit, fails on high/critical)
+4. `npm run audit:ci` (production audit, fails on high/critical) and `npm run audit:all` (all dependencies, fails on critical only)
 5. `npm run build` (TypeScript typecheck)
 6. `npm run lint` (ESLint; 0 errors required)
 7. `npm run docker:build` (Podman image build)
@@ -115,7 +115,7 @@ Stages:
 
 ### Artifact
 
-`test-reports` contains `reports/cucumber-report.html`, `reports/cucumber-results.json`, and the `reports/playwright-html/`, `reports/playwright-json/`, and `reports/junit/` trees.
+`test-reports` contains `reports/cucumber-report.html` and `reports/cucumber-results.json`. Playwright/JUnit outputs are not produced by the Cucumber runner; see [Report Publishing](#report-publishing).
 
 ---
 
@@ -174,7 +174,7 @@ Equivalent raw command:
 
 ```bash
 podman run --rm --init --ipc=host \
-  --name qai-playwright \
+  --name qai-ci-headless \
   -v "$(pwd):/workspace:z" \
   -w /workspace \
   -e HEADLESS=true \
@@ -233,18 +233,22 @@ Notes:
 - Text validation failures surface Playwright expect diffs (Expected/Received) in the report.
 - Cucumber JSON/HTML is the baseline reporting format.
 
-### Playwright HTML Report
+### Playwright Configuration
 
-Generated at: `reports/playwright-html/`
+`playwright.config.ts` defines browser projects and reporter folders for a future Playwright test suite. The current `npm test` entry point runs `cucumber-js`, which uses Playwright only for browser/API sessions; it does not invoke `playwright test`. No Playwright HTML/JSON or JUnit files are generated today.
 
-View locally:
-```bash
-npm run report:playwright
-```
+### Test Data Policy
 
-### Allure (optional)
+- Tracked fixtures: `test-data/pdfs/valid-2mb.pdf` (2,097,152 bytes) and `test-data/pdfs/invalid-2mb-plus.pdf` (2,202,009 bytes); `test-data/fixtures/users.json`.
+- Regenerate PDFs with `npm run generate:test-data` (wrapper for `scripts/generate-test-pdfs.ts`).
+- PDF scenarios generate their buffers in memory from `packages/api/src/step-defs/api-steps.ts`; the tracked files exist for manual validation and future fixtures.
+- Never add production data to `test-data/`; fixtures are synthetic and committed to the repository.
 
-Allure is not enabled by default. If added, emit Allure results under `reports/allure-results/` and publish via a separate CI step.
+### Reports Policy
+
+- `reports/` is gitignored and recreated locally by the `pretest` script and in the container image.
+- CI archives only Cucumber HTML/JSON as `test-reports` (30 days); `pages.yml` publishes that artifact to `gh-pages`.
+- Reports may contain screenshots and test data — do not commit them or include production information.
 
 ### GitHub Pages Publishing
 
@@ -267,7 +271,7 @@ gh workflow run pages.yml -f run_id=<ci-run-id>
 
 | Artifact | Retention | Location |
 |----------|-----------|----------|
-| `test-reports` (Cucumber HTML/JSON, Playwright HTML/JSON, JUnit XML) | 30 days | GitHub Actions artifact |
+| `test-reports` (Cucumber HTML + JSON only) | 30 days | GitHub Actions artifact |
 | GitHub Pages site | Indefinite | `gh-pages` branch |
 
 ---
@@ -355,8 +359,8 @@ PORT=3001 npm test
 **Symptoms**: Dynamic data scenario fails on cookie-dependent requests
 
 **Diagnosis**:
-- Check `support/world.ts` `TestContext` singleton
-- Verify `Before` hook populates cookies from prior scenario
+- Check `packages/core/src/test-context.ts` `TestContext` singleton
+- Verify `Before` hook restores cookies from prior scenario
 - Check `support/hooks.ts` `After` hook doesn't clear context prematurely
 
 **Resolution**:
@@ -366,12 +370,16 @@ PORT=3001 npm test
 
 ### Issue: Screenshots not captured on failure
 
-**Symptoms**: No screenshots in Playwright HTML report
+**Symptoms**: No PNG attachment on a failed scenario in `reports/cucumber-report.html`
+
+**Diagnosis**:
+- Check `support/hooks.ts` `After` hook status check (`Status.FAILED`)
+- Verify `CustomWorld.attach` is wired from Cucumber's constructor options in `support/world.ts`
+- Confirm the generated HTML report is from the failing run, not a stale file
 
 **Resolution**:
-- Verify `screenshot: 'only-on-failure'` in `playwright.config.ts`
-- Check `support/hooks.ts` `After` hook attaches screenshot
-- Ensure test runs in headed or headless with video/trace enabled
+- Fix the hook or World wiring; screenshots work in both headless and headed modes
+- Re-run `npm test` and open `reports/cucumber-report.html`
 
 ### Issue: Podman rootless permission denied
 
@@ -409,7 +417,7 @@ systemctl --user restart podman.socket
 If test-data PDFs are corrupted:
 
 1. Restore from git: `git checkout -- test-data/`
-2. Regenerate buffers: Run test app setup script (Phase 1)
+2. Regenerate fixtures: `npm run generate:test-data`
 3. Verify file sizes: `ls -lh test-data/pdfs/`
 
 ### Report Data Loss

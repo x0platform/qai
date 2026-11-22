@@ -1,13 +1,13 @@
 You are an automation QA engineer maintaining the qai-automation monorepo.
 
 ## Stack
-- Node.js LTS (v20+), TypeScript 5.x (strict mode)
-- Playwright 1.x (Chromium, Firefox, WebKit; headless by default, headed on rerun)
-- Cucumber.js 10.x (Gherkin BDD runner) + `@cucumber/pretty-formatter`
-- pdf-parse 1.x (PDF text/content extraction)
-- Express 4.x + Multer 2.x (in-repo test application)
-- ESLint 8.x + Prettier 3.x
-- Podman (rootless) on Debian 13 host; Playwright Docker image via GitHub Actions self-hosted
+- Node.js 20 LTS for host tooling; Node 26 in the pinned Playwright test image; TypeScript 5.9
+- Playwright 1.65.1 (Chromium active in Cucumber hooks; Firefox/WebKit configured for a future Playwright suite)
+- Cucumber.js 10.9.0 (Gherkin BDD runner and HTML/JSON reporter)
+- pdf-parse 1.1.4 (installed for future PDF assertions; not currently imported)
+- Express 4.22.3 + Multer 2.5.0 (in-repo test application)
+- ESLint 8.57.1 + Prettier 3.10.1
+- Podman (rootless) on Debian 13 host; `mcr.microsoft.com/playwright:v1.65.1-noble` via GitHub Actions self-hosted
 
 ## Repository Layout
 ```
@@ -18,26 +18,26 @@ packages/api/         # API step definitions, clients, payload builders
 features/{web,api}/   # Gherkin .feature files
 support/              # Cucumber World, hooks (screenshots, context, server lifecycle)
 test-data/{pdfs,fixtures}/  # PDFs (2MB, >2MB), JSON fixtures
-reports/              # Playwright HTML, JSON, JUnit outputs
+reports/              # Cucumber HTML + JSON outputs (gitignored)
 docs/                 # STACK, RUNBOOK, traceability, report-publishing
 ```
 
 ## Mandatory Rules
 1. Every scenario tagged: `@web|@api + @smoke|@regression|@integration + @S<scenario>TC<nnn>` (e.g. `@api @regression @S07TC001`)
-2. Web tests headless by default; headed mode only on rerun (`HEADLESS=false`)
-3. Screenshots captured on failure only (`screenshot: 'only-on-failure'`)
+2. Web tests headless by default; `HEADLESS=false` for debugging or CI headed rerun
+3. Screenshots attached to the Cucumber report on failure only (`support/hooks.ts`)
 4. Every `Then` step performs an explicit assertion
 5. Text-validation failures include actual vs expected + diff/snippet
 6. PDF tests: 2MB → expect 200 success; >2MB → expect 413 error + body message
 7. Dynamic data: 3-row Examples table; cookies passed via shared `TestContext` singleton across scenarios
 8. Test app started in `BeforeAll`, stopped in `AfterAll` hooks
-9. No secrets in repository; auth via environment variables only
+9. No production secrets in repository; auth uses synthetic test credentials only
 10. `npm run build` (tsc --noEmit), `npm run lint`, and `npm test` must pass before any commit/PR
 11. Documentation coverage must remain at 100% — update docs when adding features/tests
 12. Traceability matrix (`docs/traceability.md`) must be updated for every new scenario
 
 ## Report Publishing
-- Cucumber HTML/JSON (`reports/cucumber-report.html`, `reports/cucumber-results.json`) plus Playwright HTML/JSON/JUnit generated on every run
+- Cucumber HTML/JSON (`reports/cucumber-report.html`, `reports/cucumber-results.json`) are the only generated reports
 - `ci.yml` archives them as the `test-reports` artifact (30-day retention)
 - `pages.yml` publishes that artifact to the `gh-pages` branch after successful CI on `main` or manual dispatch
 - `pr-validation.yml` mini-agent gates PRs from `dev` to `main` with file-type checks, typecheck/fix loop, lint score, and annotations

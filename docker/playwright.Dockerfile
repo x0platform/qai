@@ -21,6 +21,6 @@ RUN npm ci --no-audit --no-fund
 
 COPY . .
 
-RUN mkdir -p reports/junit reports/playwright-html reports/playwright-json
+RUN mkdir -p reports
 
 CMD ["npm", "run", "test:ci"]
