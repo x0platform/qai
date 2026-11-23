@@ -39,5 +39,6 @@ docs/                 # STACK, RUNBOOK, traceability, report-publishing
 ## Report Publishing
 - Cucumber HTML/JSON (`reports/cucumber-report.html`, `reports/cucumber-results.json`) are the only generated reports
 - `ci.yml` archives them as the `test-reports` artifact (30-day retention)
-- `pages.yml` publishes that artifact to the `gh-pages` branch after successful CI on `main` or manual dispatch
+- `pages.yml` publishes branch-scoped reports to GitHub Pages via official Pages Actions after successful CI on `dev` or `main`, or manual dispatch
+- Public reports: `https://x0platform.github.io/qai/{dev,main}/` with index at `https://x0platform.github.io/qai/`
 - `pr-validation.yml` mini-agent gates PRs from `dev` to `main` with file-type checks, typecheck/fix loop, lint score, and annotations

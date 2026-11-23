@@ -89,7 +89,7 @@ lsof -ti:3000 | xargs kill -9
 - **Image**: locally built `qai/playwright:local` from `docker/playwright.Dockerfile`
 - **Base image**: `mcr.microsoft.com/playwright:v1.65.1-noble` (matches locked Playwright 1.65.1)
 - **Node**: host tooling pinned by `.nvmrc` (20 LTS); test execution uses the Node runtime bundled in the Playwright base image (currently Node 26)
-- **GitHub Actions**: Node 24-compatible majors only (`checkout@v5`, `setup-node@v5`, `upload-artifact@v7`, `download-artifact@v8`, `github-script@v8`); self-hosted runner requires v2.327.1+
+- **GitHub Actions**: Node 24-compatible majors only (`checkout@v5`, `setup-node@v5`, `upload-artifact@v7`, `download-artifact@v8`, `github-script@v8`, `configure-pages@v6`, `upload-pages-artifact@v5`, `deploy-pages@v5`); self-hosted runner requires v2.327.1+
 
 ### Workflow: `.github/workflows/ci.yml`
 
@@ -104,11 +104,11 @@ Stages:
 8. `npm run docker:test` (Cucumber + Playwright headless)
 9. On headless failure: `npm run docker:test:headed` (`xvfb-run -a`, reports preserved)
 10. Archive `test-reports` artifact (30-day retention)
-11. Successful `main` runs trigger `.github/workflows/pages.yml`
+11. Successful `dev` and `main` runs trigger `.github/workflows/pages.yml`
 
 ### Trigger Conditions
 
-- Push to `dev` → CI run (no deploy)
+- Push to `dev` → CI run → Pages publish via `workflow_run`
 - PR to `dev` → CI run (no deploy)
 - PR `dev` → `main` → CI run + mini-agent validation
 - Push to `main` → CI run → Pages publish via `workflow_run`
@@ -248,32 +248,40 @@ Notes:
 ### Reports Policy
 
 - `reports/` is gitignored and recreated locally by the `pretest` script and in the container image.
-- CI archives only Cucumber HTML/JSON as `test-reports` (30 days); `pages.yml` publishes that artifact to `gh-pages`.
+- CI archives only Cucumber HTML/JSON as `test-reports` (30 days); `pages.yml` publishes branch-scoped reports with official GitHub Pages Actions.
 - Reports may contain screenshots and test data — do not commit them or include production information.
 
 ### GitHub Pages Publishing
 
-Reports are archived by `ci.yml` as the `test-reports` artifact. `pages.yml` publishes them after a successful CI run on `main`.
+Reports are archived by `ci.yml` as the `test-reports` artifact. `pages.yml` publishes the latest successful `dev` and `main` reports after either branch's CI succeeds.
 
 Workflow: `.github/workflows/pages.yml`
 
-1. Resolve the source CI run (workflow run id, manual `run_id` input, or latest successful `CI` run)
-2. Download the `test-reports` artifact
-3. Publish its contents to the `gh-pages` branch through the GitHub REST API (files replaced; no runner `git` dependency)
-4. GitHub Pages serves at `https://<org>.github.io/qai-automation/`
+1. Resolve the source CI run for `dev` and `main` (workflow run id, manual `run_id` override for the selected branch, or latest successful `CI` run)
+2. Download each branch's `test-reports` artifact
+3. Assemble `site/.nojekyll`, a root index, branch indexes, and report files under `/dev/` and `/main/`; missing artifacts produce a placeholder page
+4. Upload the assembled site with `actions/upload-pages-artifact@v5`
+5. Deploy with `actions/deploy-pages@v5` through the `github-pages` environment
 
-Manual publish with a specific report run:
+Public URLs:
+- `https://x0platform.github.io/qai/` — report index
+- `https://x0platform.github.io/qai/dev/` — latest `dev` report
+- `https://x0platform.github.io/qai/main/` — latest `main` report
+
+Manual publish with a specific branch and report run:
 
 ```bash
-gh workflow run pages.yml -f run_id=<ci-run-id>
+gh workflow run pages.yml -f branch=main -f run_id=<ci-run-id>
 ```
+
+Without `run_id`, the workflow selects the latest successful `CI` run for each branch. The legacy `gh-pages` branch is unused and is not the live Pages source.
 
 ### Artifact Retention
 
 | Artifact | Retention | Location |
 |----------|-----------|----------|
 | `test-reports` (Cucumber HTML + JSON only) | 30 days | GitHub Actions artifact |
-| GitHub Pages site | Indefinite | `gh-pages` branch |
+| GitHub Pages deployment | Indefinite | GitHub Pages |
 
 ---
 
@@ -320,6 +328,32 @@ npm run lint
 - Fix annotated errors and push to the `dev` head branch
 - If auto-fix was applied locally, review the diff before pushing
 - Confirm the PR is `dev` → `main` from the same repository
+
+### Issue: GitHub Pages returns 404
+
+**Symptoms**: `https://x0platform.github.io/qai/` or a branch report path returns HTTP 404
+
+**Diagnosis**:
+```bash
+gh api repos/x0platform/qai/pages --jq '{build_type, source}'
+gh run list --workflow "Publish Reports" --limit 5
+```
+
+**Resolution**:
+- Confirm Pages **Source** is GitHub Actions / workflow build type, not `gh-pages`
+- Re-run `pages.yml` with `gh workflow run pages.yml -f branch=main`
+- Verify `actions/configure-pages@v6`, `actions/upload-pages-artifact@v5`, and `actions/deploy-pages@v5` are present in the workflow
+
+### Issue: Pages report is stale or missing
+
+**Symptoms**: branch index shows an old CI run id, or `/dev/`/`/main/` shows a placeholder
+
+**Diagnosis**:
+- Compare the CI run id on the branch index with the latest successful `CI` run for that branch
+- Check `Publish Reports` logs for artifact download failures
+- Confirm the 30-day artifact retention window has not expired
+
+**Resolution**: re-run CI for the branch, then dispatch `pages.yml` with `-f branch=<branch> -f run_id=<ci-run-id>`.
 
 ### Issue: Playwright browser not found
 
@@ -425,9 +459,10 @@ If test-data PDFs are corrupted:
 
 If reports are missing from GitHub Pages:
 
-1. Re-run CI workflow manually
-2. Re-download artifact from failed run
-3. Republish via `pages.yml` workflow_dispatch
+1. Re-run CI workflow manually on the affected branch
+2. Confirm the `test-reports` artifact exists on the successful run
+3. Republish via `pages.yml` workflow_dispatch with `branch=dev` or `branch=main`
+4. Verify `/`, `/dev/`, and `/main/` return HTTP 200
 
 ### Credential Exposure
 
@@ -442,6 +477,6 @@ If secrets are accidentally committed:
 
 ## Support
 
-- Framework issues: Create GitHub issue in `qai-automation` repo
+- Framework issues: Create GitHub issue in `qai` repo
 - Infrastructure issues: Contact DevOps / platform team
 - Security vulnerabilities: Report via GitHub Security Advisories

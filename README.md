@@ -144,6 +144,11 @@ Reporting behavior:
 - `playwright.config.ts` holds browser settings and reporter definitions for a future Playwright test suite; `npm test` runs Cucumber, so Playwright/JUnit reports are not generated today
 - Allure is not enabled; Cucumber HTML/JSON is the published baseline
 
+Live branch reports are published at:
+- `https://x0platform.github.io/qai/` — report index
+- `https://x0platform.github.io/qai/dev/` — latest `dev` report
+- `https://x0platform.github.io/qai/main/` — latest `main` report
+
 ## Documentation Coverage
 
 | Document | Path | Coverage |
@@ -163,7 +168,7 @@ GitHub Actions runs on self-hosted runners (Debian 13 trixie) using a pinned Pla
 |----------|---------|---------|
 | `.github/workflows/ci.yml` | Push/PR to `dev` or `main`, manual | Audit, typecheck, lint, build image, headless tests in Podman, headed rerun on failure, archive `test-reports` artifact |
 | `.github/workflows/pr-validation.yml` | PR `dev` → `main` | Mini-agent: file types, changed files + commit suggestion, compile/typecheck with fix loop, lint score, PR annotations and gate |
-| `.github/workflows/pages.yml` | Successful CI on `main`, manual with run id | Download `test-reports` and publish to the `gh-pages` branch |
+| `.github/workflows/pages.yml` | Successful CI on `dev` or `main`, manual with branch/run id | Assemble `/dev/` and `/main/` reports and deploy with official GitHub Pages Actions |
 
 See `docs/RUNBOOK.md` for commands and `docs/report-publishing.md` for report/artifact details.
 
