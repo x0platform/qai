@@ -36,7 +36,8 @@ All other reported moderate advisories (`@cucumber/gherkin`, `@cucumber/gherkin-
 
 ## Version Pinning Strategy
 
-- **Host Node.js**: 20 LTS in `.nvmrc`; `setup-node` in `ci.yml`, `pr-validation.yml`, and `pages.yml` uses `node-version-file: .nvmrc`.
+- **Host Node.js**: 20 LTS in `.nvmrc`; `setup-node` in `ci.yml` and `pr-validation.yml` uses `node-version-file: .nvmrc`. `pages.yml` runs entirely on Node 24 GitHub Actions.
+- **GitHub Actions**: Node 24-compatible majors (`checkout@v5`, `setup-node@v5`, `upload-artifact@v7`, `download-artifact@v8`, `github-script@v8`); self-hosted runner requires v2.327.1+.
 - **Engines**: `package.json` declares `node >=20.0.0` for host tooling.
 - **Test runtime Node**: provided by the pinned Playwright container image; not controlled by `.nvmrc`.
 - **Playwright image and npm Playwright version**: both 1.65.1, upgraded together.

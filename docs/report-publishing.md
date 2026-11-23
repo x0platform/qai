@@ -37,7 +37,7 @@ Failure screenshots are attached by the `After` hook in `support/hooks.ts` throu
 ```yaml
 - name: Archive reports
   if: always()
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@v7
   with:
     name: test-reports
     path: |
@@ -66,12 +66,11 @@ Triggered by a successful `CI` run on `main` via `workflow_run`, or manually wit
 
 ### Steps
 
-1. **Setup Node** — pins the runtime from `.nvmrc`
-2. **Resolve run** — use the triggering CI run id, the `run_id` input, or the latest successful `CI` run
-3. **Download artifact** — fetch `test-reports` with `actions/download-artifact@v4`
-4. **Create index** — write `index.html` redirecting to `cucumber-report.html`
-5. **Publish** — replace the `gh-pages` branch contents using `peaceiris/actions-gh-pages@v4`
-6. **GitHub Pages serves** — site available at `https://<org>.github.io/qai-automation/`
+1. **Resolve run** — `actions/github-script@v8` uses the triggering CI run id, the `run_id` input, or the latest successful `CI` run
+2. **Download artifact** — fetch `test-reports` with `actions/download-artifact@v8`
+3. **Create index** — write `index.html` redirecting to `cucumber-report.html`
+4. **Publish** — `actions/github-script@v8` replaces `gh-pages` branch contents through the GitHub REST Git Data API; no `git` CLI is required on the runner
+5. **GitHub Pages serves** — site available at `https://<org>.github.io/qai-automation/`
 
 ### Manual Publishing
 
@@ -81,7 +80,7 @@ gh workflow run pages.yml -f run_id=<ci-run-id>
 
 Without `run_id`, the workflow selects the latest successful `CI` run.
 
-Fallback from a downloaded artifact:
+Local git fallback from a downloaded artifact:
 
 ```bash
 git checkout gh-pages || git checkout --orphan gh-pages
