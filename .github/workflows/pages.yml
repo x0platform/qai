@@ -4,181 +4,278 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-    branches: [main]
+    branches: [dev, main]
   workflow_dispatch:
     inputs:
+      branch:
+        description: Branch to prioritize (dev or main)
+        required: false
+        default: main
+        type: choice
+        options: [dev, main]
       run_id:
-        description: CI run id containing the test-reports artifact
+        description: Optional CI run id for the selected branch
         required: false
         type: string
 
+concurrency:
+  group: pages-publish
+  cancel-in-progress: false
+
 permissions:
   actions: read
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   publish:
-    name: Publish test reports to GitHub Pages
+    name: Publish branch reports to GitHub Pages
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+       contains(fromJSON('["dev","main"]'), github.event.workflow_run.head_branch))
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Resolve source CI run
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v6
+
+      - name: Resolve CI runs
         id: source
         uses: actions/github-script@v8
         env:
-          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          INPUT_BRANCH: ${{ inputs.branch || '' }}
           INPUT_RUN_ID: ${{ inputs.run_id || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          WORKFLOW_RUN_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            let runId = process.env.WORKFLOW_RUN_ID || process.env.INPUT_RUN_ID;
+            const allowedBranches = ['dev', 'main'];
+            const branches = ['dev', 'main'];
+            const inputBranch = process.env.INPUT_BRANCH || '';
+            const eventBranch =
+              process.env.EVENT_NAME === 'workflow_run' ? process.env.WORKFLOW_RUN_BRANCH || '' : '';
+            const selectedBranch = inputBranch || eventBranch || 'main';
 
-            if (!runId) {
+            if (!allowedBranches.includes(selectedBranch)) {
+              throw new Error(`Unsupported branch: ${selectedBranch}`);
+            }
+
+            const summary = {};
+            for (const branch of branches) {
+              const overrideRunId = branch === selectedBranch ? process.env.INPUT_RUN_ID || '' : '';
+              if (overrideRunId) {
+                const run = await github.rest.actions.getWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: Number(overrideRunId),
+                });
+                if (run.data.head_branch !== branch) {
+                  throw new Error(`Run ${overrideRunId} belongs to ${run.data.head_branch}, not ${branch}`);
+                }
+                summary[branch] = {
+                  runId: String(run.data.id),
+                  createdAt: run.data.created_at,
+                  conclusion: run.data.conclusion || 'unknown',
+                  htmlUrl: run.data.html_url,
+                };
+                continue;
+              }
+
               const runs = await github.rest.actions.listWorkflowRunsForRepo({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
+                branch,
                 status: 'success',
-                per_page: 20
+                per_page: 20,
               });
               const run = runs.data.workflow_runs.find((item) => item.name === 'CI');
-              if (!run) throw new Error('No successful CI run found');
-              runId = String(run.id);
+              if (!run) {
+                summary[branch] = { runId: '', createdAt: '', conclusion: 'none', htmlUrl: '' };
+                continue;
+              }
+              summary[branch] = {
+                runId: String(run.id),
+                createdAt: run.created_at,
+                conclusion: run.conclusion || 'unknown',
+                htmlUrl: run.html_url,
+              };
             }
 
-            core.setOutput('run_id', runId);
-            core.notice(`Using CI run ${runId}`);
+            for (const branch of branches) {
+              core.setOutput(`${branch}_run_id`, summary[branch].runId);
+              core.setOutput(`${branch}_run_created_at`, summary[branch].createdAt);
+              core.setOutput(`${branch}_run_url`, summary[branch].htmlUrl);
+            }
+            core.setOutput('selected_branch', selectedBranch);
+            core.setOutput('summary', JSON.stringify(summary));
+            core.notice(
+              `Publishing reports for ${selectedBranch}: dev=${summary.dev.runId || 'none'}, main=${summary.main.runId || 'none'}`,
+            );
 
-      - name: Download test report artifact
+      - name: Download dev test report
+        id: download_dev
+        continue-on-error: true
+        if: steps.source.outputs.dev_run_id != ''
         uses: actions/download-artifact@v8
         with:
           name: test-reports
-          run-id: ${{ steps.source.outputs.run_id }}
+          run-id: ${{ steps.source.outputs.dev_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: reports-out
+          path: site/dev
 
-      - name: Create Pages index
-        run: |
-          cat > reports-out/index.html <<'HTML'
-          <!doctype html>
-          <html lang="en">
-            <head>
-              <meta charset="utf-8">
-              <meta http-equiv="refresh" content="0; url=cucumber-report.html">
-              <title>QAI Test Reports</title>
-            </head>
-            <body>
-              <p><a href="cucumber-report.html">Open the latest Cucumber report</a></p>
-            </body>
-          </html>
-          HTML
+      - name: Download main test report
+        id: download_main
+        continue-on-error: true
+        if: steps.source.outputs.main_run_id != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: test-reports
+          run-id: ${{ steps.source.outputs.main_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: site/main
 
-      - name: Publish to gh-pages
+      - name: Assemble Pages site
         uses: actions/github-script@v8
         env:
-          PUBLISH_DIR: reports-out
-          RUN_ID: ${{ steps.source.outputs.run_id }}
+          SITE_DIR: site
+          SELECTED_BRANCH: ${{ steps.source.outputs.selected_branch }}
+          DEV_RUN_ID: ${{ steps.source.outputs.dev_run_id }}
+          DEV_RUN_URL: ${{ steps.source.outputs.dev_run_url }}
+          DEV_RUN_CREATED_AT: ${{ steps.source.outputs.dev_run_created_at }}
+          MAIN_RUN_ID: ${{ steps.source.outputs.main_run_id }}
+          MAIN_RUN_URL: ${{ steps.source.outputs.main_run_url }}
+          MAIN_RUN_CREATED_AT: ${{ steps.source.outputs.main_run_created_at }}
+          PAGES_URL: ${{ steps.pages.outputs.base_url }}
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('node:fs');
             const path = require('node:path');
-            const { owner, repo } = context.repo;
-            const branch = 'gh-pages';
-            const dir = process.env.PUBLISH_DIR;
-
-            if (!dir || !fs.existsSync(dir)) {
-              throw new Error(`Missing publish directory: ${dir}`);
-            }
-
-            const collect = (folder, prefix = '') => {
-              const result = [];
-              for (const entry of fs.readdirSync(path.join(folder, prefix), { withFileTypes: true })) {
-                const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
-                if (entry.isDirectory()) result.push(...collect(folder, relative));
-                else if (entry.isFile()) result.push(relative);
-              }
-              return result;
+            const site = process.env.SITE_DIR;
+            const branches = ['dev', 'main'];
+            const runInfo = {
+              dev: {
+                id: process.env.DEV_RUN_ID || '',
+                url: process.env.DEV_RUN_URL || '',
+                createdAt: process.env.DEV_RUN_CREATED_AT || '',
+              },
+              main: {
+                id: process.env.MAIN_RUN_ID || '',
+                url: process.env.MAIN_RUN_URL || '',
+                createdAt: process.env.MAIN_RUN_CREATED_AT || '',
+              },
             };
 
-            const files = collect(dir).sort();
-            const contents = new Map();
-            for (const file of files) {
-              contents.set(file, fs.readFileSync(path.join(dir, file)).toString('base64'));
-            }
-            contents.set('.nojekyll', '');
-
-            let baseCommitSha = null;
-            let baseTreeSha = null;
-            try {
-              const ref = await github.rest.git.getRef({ owner, repo, ref: `heads/${branch}` });
-              baseCommitSha = ref.data.object.sha;
-              const commit = await github.rest.git.getCommit({ owner, repo, commit_sha: baseCommitSha });
-              baseTreeSha = commit.data.tree.sha;
-            } catch (error) {
-              if (error.status !== 404) throw error;
+            if (!fs.existsSync(site)) {
+              throw new Error(`Missing site directory: ${site}`);
             }
 
-            const treeEntries = [];
-            if (baseTreeSha) {
-              const existing = await github.rest.git.getTree({
-                owner,
-                repo,
-                tree_sha: baseTreeSha,
-                recursive: '1'
-              });
-              if (existing.data.truncated) {
-                throw new Error('Existing gh-pages tree is too large to replace safely');
+            const escapeHtml = (value) =>
+              String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+
+            const page = (title, body) => `<!doctype html>
+            <html lang="en">
+              <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>${escapeHtml(title)}</title>
+                <style>
+                  body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; }
+                  a { color: #0969da; }
+                  .card { border: 1px solid #d0d7de; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+                  .muted { color: #57606a; }
+                </style>
+              </head>
+              <body>
+                ${body}
+              </body>
+            </html>
+            `;
+
+            fs.writeFileSync(path.join(site, '.nojekyll'), '');
+
+            for (const branch of branches) {
+              const dir = path.join(site, branch);
+              fs.mkdirSync(dir, { recursive: true });
+              const report = path.join(dir, 'cucumber-report.html');
+              const info = runInfo[branch];
+              const runLink = info.url
+                ? `<a href="${escapeHtml(info.url)}">CI run ${escapeHtml(info.id)}</a>`
+                : 'no successful CI run';
+              const branchHeading = `<h1>${escapeHtml(branch)} test report</h1>`;
+
+              if (fs.existsSync(report)) {
+                fs.writeFileSync(
+                  path.join(dir, 'index.html'),
+                  page(
+                    `${branch} test report`,
+                    `${branchHeading}
+                     <p><a href="cucumber-report.html">Open Cucumber HTML report</a></p>
+                     <p><a href="cucumber-results.json">Cucumber JSON results</a></p>
+                     <p class="muted">Source: ${runLink} · ${escapeHtml(info.createdAt || 'unknown time')}</p>
+                     <p><a href="../">All branches</a></p>`,
+                  ),
+                );
+              } else {
+                fs.writeFileSync(
+                  path.join(dir, 'index.html'),
+                  page(
+                    `${branch} test report unavailable`,
+                    `${branchHeading}
+                     <p>No report artifact is available for this branch.</p>
+                     <p class="muted">Source: ${runLink}</p>
+                     <p><a href="../">All branches</a></p>`,
+                  ),
+                );
+                core.warning(`No Cucumber report found for ${branch}`);
               }
-              for (const item of existing.data.tree) {
-                if (item.type === 'blob' && !contents.has(item.path)) {
-                  treeEntries.push({ path: item.path, mode: item.mode, type: 'blob', sha: null });
-                }
-              }
             }
 
-            for (const [file, base64] of contents) {
-              const blob = await github.rest.git.createBlob({
-                owner,
-                repo,
-                content: base64,
-                encoding: 'base64'
-              });
-              treeEntries.push({ path: file, mode: '100644', type: 'blob', sha: blob.data.sha });
-            }
+            const cards = branches
+              .map((branch) => {
+                const info = runInfo[branch];
+                const available = fs.existsSync(path.join(site, branch, 'cucumber-report.html'));
+                const runLink = info.url
+                  ? `<a href="${escapeHtml(info.url)}">CI run ${escapeHtml(info.id)}</a>`
+                  : 'no successful CI run';
+                return `<div class="card">
+                  <h2><a href="${branch}/">${escapeHtml(branch)}</a> ${available ? '' : '<span class="muted">(no report)</span>'}</h2>
+                  <p><a href="${branch}/cucumber-report.html">HTML report</a> · <a href="${branch}/cucumber-results.json">JSON results</a></p>
+                  <p class="muted">${escapeHtml(info.createdAt || 'unknown time')} · ${runLink}</p>
+                </div>`;
+              })
+              .join('\n');
 
-            const tree = await github.rest.git.createTree({
-              owner,
-              repo,
-              ...(baseTreeSha ? { base_tree: baseTreeSha } : {}),
-              tree: treeEntries
-            });
-            const commit = await github.rest.git.createCommit({
-              owner,
-              repo,
-              message: `chore: publish test reports from run ${process.env.RUN_ID}`,
-              tree: tree.data.sha,
-              parents: baseCommitSha ? [baseCommitSha] : []
-            });
+            fs.writeFileSync(
+              path.join(site, 'index.html'),
+              page(
+                'QAI test reports',
+                `<h1>QAI test reports</h1>
+                 <p class="muted">Published by <code>pages.yml</code>; selected branch: ${escapeHtml(process.env.SELECTED_BRANCH || 'main')}.</p>
+                 ${cards}`,
+              ),
+            );
 
-            if (baseCommitSha) {
-              await github.rest.git.updateRef({
-                owner,
-                repo,
-                ref: `heads/${branch}`,
-                sha: commit.data.sha,
-                force: true
-              });
-            } else {
-              await github.rest.git.createRef({
-                owner,
-                repo,
-                ref: `refs/heads/${branch}`,
-                sha: commit.data.sha
-              });
-            }
+            core.notice(`Assembled Pages site at ${site} with dev/main report folders`);
 
-            core.notice(`Published ${contents.size} files to ${branch} in commit ${commit.data.sha.slice(0, 7)}`);
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+          include-hidden-files: true
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

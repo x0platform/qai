@@ -22,6 +22,7 @@ Source of truth for installed versions, pinning policy, and vulnerability manage
 | Lint plugins | `@typescript-eslint/*` | 7.18.0 | TypeScript lint rules | Active |
 | Formatter | Prettier | 3.10.1 | Code formatting | Active |
 | Reporting | Cucumber HTML + JSON | Cucumber 10.9.0 | BDD reports, failure screenshots | Active baseline |
+| Report hosting | GitHub Pages Actions | `configure-pages@v6`, `upload-pages-artifact@v5`, `deploy-pages@v5` | Branch-scoped report deployment | Active |
 
 ## Monitored Transitive Dependencies
 
@@ -36,8 +37,9 @@ All other reported moderate advisories (`@cucumber/gherkin`, `@cucumber/gherkin-
 
 ## Version Pinning Strategy
 
-- **Host Node.js**: 20 LTS in `.nvmrc`; `setup-node` in `ci.yml` and `pr-validation.yml` uses `node-version-file: .nvmrc`. `pages.yml` runs entirely on Node 24 GitHub Actions.
-- **GitHub Actions**: Node 24-compatible majors (`checkout@v5`, `setup-node@v5`, `upload-artifact@v7`, `download-artifact@v8`, `github-script@v8`); self-hosted runner requires v2.327.1+.
+- **Host Node.js**: 20 LTS in `.nvmrc`; `setup-node` in `ci.yml` and `pr-validation.yml` uses `node-version-file: .nvmrc`. `pages.yml` uses Node 24 GitHub Actions only; no repository Node runtime is installed there.
+- **GitHub Actions**: Node 24-compatible majors (`checkout@v5`, `setup-node@v5`, `upload-artifact@v7`, `download-artifact@v8`, `github-script@v8`, `configure-pages@v6`, `upload-pages-artifact@v5`, `deploy-pages@v5`); self-hosted runner requires v2.327.1+.
+- **GitHub Pages**: workflow build type; `pages.yml` assembles `/dev/` and `/main/` report folders from `test-reports` artifacts and deploys them through the `github-pages` environment.
 - **Engines**: `package.json` declares `node >=20.0.0` for host tooling.
 - **Test runtime Node**: provided by the pinned Playwright container image; not controlled by `.nvmrc`.
 - **Playwright image and npm Playwright version**: both 1.65.1, upgraded together.

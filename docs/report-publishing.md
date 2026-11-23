@@ -1,13 +1,13 @@
 # Report Publishing — QAI Automation Framework
 
-Documents the process for archiving test reports, publishing to GitHub Pages, and artifact retention.
+Documents the process for archiving test reports, publishing branch-scoped reports to GitHub Pages, and artifact retention.
 
 ## Overview
 
 After every test execution:
 1. Cucumber generates HTML + JSON inside the CI container (`npm test` → `cucumber-js`)
 2. `ci.yml` archives both files as the `test-reports` GitHub Actions artifact
-3. `pages.yml` publishes that artifact to GitHub Pages after a successful CI run on `main`
+3. `pages.yml` downloads the latest successful `test-reports` artifact for `dev` and `main`, assembles one site, and deploys it with official GitHub Pages Actions
 
 Playwright is used by the Cucumber steps for browser and API sessions. `playwright.config.ts` contains reporter definitions for a future `playwright test` suite, but no Playwright HTML/JSON or JUnit reports are produced by the current suite.
 
@@ -54,7 +54,7 @@ GitHub UI: Actions → select workflow run → Artifacts → download `test-repo
 GitHub CLI:
 
 ```bash
-gh run list
+gh run list --workflow CI --branch dev
 gh run download <run-id> -n test-reports
 ```
 
@@ -62,49 +62,57 @@ gh run download <run-id> -n test-reports
 
 ### Workflow: `.github/workflows/pages.yml`
 
-Triggered by a successful `CI` run on `main` via `workflow_run`, or manually with an optional CI run id. A push to `main` starts CI, which starts this workflow.
+Triggered by a successful `CI` run on `dev` or `main` via `workflow_run`, or manually with a selected branch and optional CI run id. Both branch reports are published on every deployment.
+
+Public URLs:
+
+| Path | Contents |
+|------|----------|
+| `https://x0platform.github.io/qai/` | Branch report index |
+| `https://x0platform.github.io/qai/dev/` | Latest successful `dev` Cucumber report |
+| `https://x0platform.github.io/qai/main/` | Latest successful `main` Cucumber report |
 
 ### Steps
 
-1. **Resolve run** — `actions/github-script@v8` uses the triggering CI run id, the `run_id` input, or the latest successful `CI` run
-2. **Download artifact** — fetch `test-reports` with `actions/download-artifact@v8`
-3. **Create index** — write `index.html` redirecting to `cucumber-report.html`
-4. **Publish** — `actions/github-script@v8` replaces `gh-pages` branch contents through the GitHub REST Git Data API; no `git` CLI is required on the runner
-5. **GitHub Pages serves** — site available at `https://<org>.github.io/qai-automation/`
+1. **Resolve runs** — `actions/github-script@v8` selects the triggering CI run, the manual `run_id` override for the selected branch, or the latest successful `CI` run for `dev` and `main`
+2. **Download artifacts** — fetch each branch's `test-reports` with `actions/download-artifact@v8`
+3. **Assemble site** — create `.nojekyll`, a root `index.html`, branch indexes, and `cucumber-report.html` / `cucumber-results.json` links under `/dev/` and `/main/`; missing artifacts produce a placeholder page
+4. **Upload Pages artifact** — package the assembled `site/` directory with `actions/upload-pages-artifact@v5`
+5. **Deploy** — publish with `actions/deploy-pages@v5` through the `github-pages` environment
+6. **GitHub Pages serves** — site available at `https://x0platform.github.io/qai/`
+
+No `git` CLI or `gh-pages` branch write is required. The legacy `gh-pages` branch is retained as an unused fallback and is not the live Pages source.
 
 ### Manual Publishing
 
 ```bash
-gh workflow run pages.yml -f run_id=<ci-run-id>
+# Publish the latest successful dev and main reports, prioritizing dev
+gh workflow run pages.yml -f branch=dev
+
+# Publish using a specific main CI run as the main report source
+gh workflow run pages.yml -f branch=main -f run_id=<ci-run-id>
 ```
 
-Without `run_id`, the workflow selects the latest successful `CI` run.
-
-Local git fallback from a downloaded artifact:
-
-```bash
-git checkout gh-pages || git checkout --orphan gh-pages
-cp -r <downloaded-artifact>/. .
-git add -A
-git commit -m "chore: publish test reports"
-git push origin gh-pages
-git checkout main
-```
+Without `run_id`, the workflow selects the latest successful `CI` run for each branch. The `run_id` override applies only to the branch selected by `-f branch`.
 
 ### GitHub Pages Configuration
 
 In repository settings:
-- **Source**: Deploy from branch `gh-pages`
-- **Folder**: `/ (root)`
-- **URL**: `https://<org>.github.io/qai-automation/`
+- **Source**: GitHub Actions
+- **Build type**: workflow
+- **Environment**: `github-pages`
+- **URL**: `https://x0platform.github.io/qai/`
+
+Do not switch Pages source to the `gh-pages` branch; deployments are produced by `pages.yml`.
 
 ## Artifact Retention Policy
 
 | Artifact | Retention | Storage | Auto-Cleanup |
 |----------|-----------|---------|--------------|
 | `test-reports` (Cucumber HTML + JSON) | 30 days | GitHub Actions | Yes (GitHub-managed) |
-| GitHub Pages site | Indefinite | `gh-pages` branch | Replaced on every publish |
+| GitHub Pages deployment | Indefinite | GitHub Pages | Replaced on every publish |
 | Local `reports/` directory | Session | Runner workspace | Yes (`.gitignored`, recreated by `pretest`) |
+| Legacy `gh-pages` branch | Indefinite | Git branch | Unused; not auto-managed |
 
 ## Report Contents
 
@@ -118,43 +126,52 @@ Cucumber JSON and HTML include:
 
 | Trigger | Action | Report Published |
 |---------|--------|-----------------|
-| Push to `dev` | CI runs, `test-reports` archived | ❌ |
+| Push to `dev` | CI runs, `test-reports` archived, then `pages.yml` via `workflow_run` | ✅ `/dev/` and `/main/` |
 | PR to `dev` | CI runs, `test-reports` archived | ❌ |
 | PR `dev` → `main` | Mini-agent + CI run, `test-reports` archived | ❌ (PR only) |
-| Push to `main` | CI runs, then `pages.yml` via `workflow_run` | ✅ |
+| Push to `main` | CI runs, then `pages.yml` via `workflow_run` | ✅ `/dev/` and `/main/` |
 | Manual `ci.yml` dispatch | CI runs, `test-reports` archived | ❌ (publish separately) |
-| Manual `pages.yml` dispatch | Publishes selected/latest successful CI artifact | ✅ |
+| Manual `pages.yml` dispatch | Publishes selected/latest successful CI artifacts | ✅ `/dev/` and `/main/` |
 
 ## Troubleshooting Report Publishing
 
-### Issue: GitHub Pages not updating
+### Issue: GitHub Pages returns 404
 
 **Diagnosis**:
-- Check `gh-pages` branch exists
-- Verify Pages source is set to `gh-pages` branch
-- Check latest commit on `gh-pages`
+- Confirm Pages source is **GitHub Actions**, not a branch
+- Check the latest `Publish Reports` run succeeded
+- Confirm `actions/configure-pages@v6`, `actions/upload-pages-artifact@v5`, and `actions/deploy-pages@v5` are present in `pages.yml`
 
 **Resolution**:
 ```bash
-git fetch origin
-git checkout gh-pages
-git pull origin gh-pages
-ls -la index.html cucumber-report.html
+gh run list --workflow "Publish Reports" --limit 5
+gh api repos/x0platform/qai/pages --jq '{build_type, source}'
+gh workflow run pages.yml -f branch=main
 ```
+
+### Issue: Deployment not created
+
+**Diagnosis**:
+- Check that CI succeeded on `dev` or `main`
+- Verify the `Publish Reports` job passed its `if` condition
+- Check `pages: write` and `id-token: write` permissions
+
+**Resolution**: re-run CI, then dispatch `pages.yml` manually.
 
 ### Issue: Artifact not found
 
 **Diagnosis**:
 - Check the CI run completed and the archive step ran
 - Verify the 30-day retention window has not expired
+- Confirm the artifact name is exactly `test-reports`
 
 **Resolution**: re-run CI, then re-run `pages.yml`.
 
 ### Issue: Report HTML shows stale results
 
-**Diagnosis**: `gh-pages` not updated after the latest CI run, or browser cache.
+**Diagnosis**: compare the CI run id shown on the branch index with the latest successful `CI` run for that branch.
 
-**Resolution**: re-trigger `pages.yml`; clear browser cache or use incognito mode.
+**Resolution**: dispatch `pages.yml` with the desired branch and `run_id`; clear browser cache or use incognito mode.
 
 ---
 
@@ -164,7 +181,7 @@ ls -la index.html cucumber-report.html
 gh run list --limit 50 --status completed
 gh run delete <run-id>
 
-gh api repos/<org>/qai-automation/actions/artifacts
+gh api repos/x0platform/qai/actions/artifacts
 ```
 
 ## Security
