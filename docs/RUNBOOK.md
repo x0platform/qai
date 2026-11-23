@@ -134,7 +134,7 @@ Runs on PRs opened from `dev` into `main` in the same repository. Fork PRs are s
 | 3.4 | ESLint JSON on changed source files; JSON/YAML/Gherkin/Dockerfile validity checks | Errors, warnings, and 0-100 score per check |
 | 3.5 | Gate on error count | `::error`/`::warning` annotations, PR comment, job pass/fail |
 
-The agent writes annotations through GitHub workflow commands, posts the full report as a PR comment, and exports `gate`, `lint_score`, and `commit_suggestion` as step outputs. Auto-fixes are workspace-only; the agent never pushes commits.
+The agent reads changed files from the GitHub PR files API when running in Actions, so the self-hosted runner does not need git history. It writes annotations through GitHub workflow commands, posts the full report as a PR comment, and exports `gate`, `lint_score`, and `commit_suggestion` as step outputs. Auto-fixes are workspace-only; the agent never pushes commits.
 
 Run locally against the previous commit:
 

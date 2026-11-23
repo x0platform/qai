@@ -98,12 +98,42 @@ function isLintable(file: string): boolean {
   return isCode(file) && !ignoredPrefixes.some((prefix) => file.startsWith(prefix)) && !file.endsWith('.config.ts');
 }
 
-function changedFiles(): string[] {
+async function changedFiles(): Promise<string[]> {
   if (process.env.CHANGED_FILES) {
     return process.env.CHANGED_FILES.split(',')
       .map((file) => file.trim())
       .filter(Boolean);
   }
+
+  const token = process.env.GITHUB_TOKEN;
+  const prNumber = process.env.PR_NUMBER;
+  const repository = process.env.REPOSITORY;
+  if (token && prNumber && repository) {
+    try {
+      const api = process.env.GITHUB_API_URL || 'https://api.github.com';
+      const files: string[] = [];
+      for (let page = 1; ; page += 1) {
+        const response = await fetch(
+          `${api}/repos/${repository}/pulls/${prNumber}/files?per_page=100&page=${page}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/vnd.github+json',
+            },
+          },
+        );
+        if (!response.ok) throw new Error(`Unable to list PR files: ${response.status}`);
+        const batch = (await response.json()) as { filename: string; status: string }[];
+        files.push(...batch.filter((item) => item.status !== 'removed').map((item) => item.filename));
+        if (batch.length < 100) break;
+      }
+      return [...new Set(files)];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`::warning::PR file listing failed, falling back to git diff: ${message}`);
+    }
+  }
+
   const diff = run('git', ['diff', '--name-only', '--diff-filter=ACMRT', `${baseRef}...HEAD`]);
   const files = diff.output
     .split('\n')
@@ -365,7 +395,7 @@ async function postComment(body: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const files = changedFiles();
+  const files = await changedFiles();
   if (files.length === 0) {
     const empty = '## PR Validation Mini-Agent\n\nNo changed files detected; gate passed.\n';
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, empty);
