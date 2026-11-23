@@ -89,6 +89,7 @@ lsof -ti:3000 | xargs kill -9
 - **Image**: locally built `qai/playwright:local` from `docker/playwright.Dockerfile`
 - **Base image**: `mcr.microsoft.com/playwright:v1.65.1-noble` (matches locked Playwright 1.65.1)
 - **Node**: host tooling pinned by `.nvmrc` (20 LTS); test execution uses the Node runtime bundled in the Playwright base image (currently Node 26)
+- **GitHub Actions**: Node 24-compatible majors only (`checkout@v5`, `setup-node@v5`, `upload-artifact@v7`, `download-artifact@v8`, `github-script@v8`); self-hosted runner requires v2.327.1+
 
 ### Workflow: `.github/workflows/ci.yml`
 
@@ -258,7 +259,7 @@ Workflow: `.github/workflows/pages.yml`
 
 1. Resolve the source CI run (workflow run id, manual `run_id` input, or latest successful `CI` run)
 2. Download the `test-reports` artifact
-3. Publish its contents to the `gh-pages` branch (orphan branch, files replaced)
+3. Publish its contents to the `gh-pages` branch through the GitHub REST API (files replaced; no runner `git` dependency)
 4. GitHub Pages serves at `https://<org>.github.io/qai-automation/`
 
 Manual publish with a specific report run:

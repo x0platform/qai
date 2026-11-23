@@ -26,59 +26,34 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-
       - name: Resolve source CI run
         id: source
+        uses: actions/github-script@v8
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_API_URL: ${{ github.api_url }}
-          REPOSITORY: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
           WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id || '' }}
           INPUT_RUN_ID: ${{ inputs.run_id || '' }}
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-
-          async function main() {
-            const api = process.env.GITHUB_API_URL || 'https://api.github.com';
-            const token = process.env.GITHUB_TOKEN;
-            const repo = process.env.REPOSITORY;
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
             let runId = process.env.WORKFLOW_RUN_ID || process.env.INPUT_RUN_ID;
 
             if (!runId) {
-              const response = await fetch(`${api}/repos/${repo}/actions/runs?status=success&per_page=20`, {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  Accept: 'application/vnd.github+json'
-                }
+              const runs = await github.rest.actions.listWorkflowRunsForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                status: 'success',
+                per_page: 20
               });
-              if (!response.ok) throw new Error(`Unable to list CI runs: ${response.status}`);
-              const data = await response.json();
-              const run = data.workflow_runs.find((item) => item.name === 'CI');
+              const run = runs.data.workflow_runs.find((item) => item.name === 'CI');
               if (!run) throw new Error('No successful CI run found');
               runId = String(run.id);
             }
 
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `run_id=${runId}\n`);
-            console.log(`Using CI run ${runId}`);
-          }
-
-          main().catch((error) => {
-            console.error(error);
-            process.exit(1);
-          });
-          NODE
+            core.setOutput('run_id', runId);
+            core.notice(`Using CI run ${runId}`);
 
       - name: Download test report artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: test-reports
           run-id: ${{ steps.source.outputs.run_id }}
@@ -102,11 +77,108 @@ jobs:
           HTML
 
       - name: Publish to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: actions/github-script@v8
+        env:
+          PUBLISH_DIR: reports-out
+          RUN_ID: ${{ steps.source.outputs.run_id }}
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: ./reports-out
-          keep_files: false
-          force_orphan: true
-          commit_message: "chore: publish test reports from run ${{ steps.source.outputs.run_id }}"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const { owner, repo } = context.repo;
+            const branch = 'gh-pages';
+            const dir = process.env.PUBLISH_DIR;
+
+            if (!dir || !fs.existsSync(dir)) {
+              throw new Error(`Missing publish directory: ${dir}`);
+            }
+
+            const collect = (folder, prefix = '') => {
+              const result = [];
+              for (const entry of fs.readdirSync(path.join(folder, prefix), { withFileTypes: true })) {
+                const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+                if (entry.isDirectory()) result.push(...collect(folder, relative));
+                else if (entry.isFile()) result.push(relative);
+              }
+              return result;
+            };
+
+            const files = collect(dir).sort();
+            const contents = new Map();
+            for (const file of files) {
+              contents.set(file, fs.readFileSync(path.join(dir, file)).toString('base64'));
+            }
+            contents.set('.nojekyll', '');
+
+            let baseCommitSha = null;
+            let baseTreeSha = null;
+            try {
+              const ref = await github.rest.git.getRef({ owner, repo, ref: `heads/${branch}` });
+              baseCommitSha = ref.data.object.sha;
+              const commit = await github.rest.git.getCommit({ owner, repo, commit_sha: baseCommitSha });
+              baseTreeSha = commit.data.tree.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            const treeEntries = [];
+            if (baseTreeSha) {
+              const existing = await github.rest.git.getTree({
+                owner,
+                repo,
+                tree_sha: baseTreeSha,
+                recursive: '1'
+              });
+              if (existing.data.truncated) {
+                throw new Error('Existing gh-pages tree is too large to replace safely');
+              }
+              for (const item of existing.data.tree) {
+                if (item.type === 'blob' && !contents.has(item.path)) {
+                  treeEntries.push({ path: item.path, mode: item.mode, type: 'blob', sha: null });
+                }
+              }
+            }
+
+            for (const [file, base64] of contents) {
+              const blob = await github.rest.git.createBlob({
+                owner,
+                repo,
+                content: base64,
+                encoding: 'base64'
+              });
+              treeEntries.push({ path: file, mode: '100644', type: 'blob', sha: blob.data.sha });
+            }
+
+            const tree = await github.rest.git.createTree({
+              owner,
+              repo,
+              ...(baseTreeSha ? { base_tree: baseTreeSha } : {}),
+              tree: treeEntries
+            });
+            const commit = await github.rest.git.createCommit({
+              owner,
+              repo,
+              message: `chore: publish test reports from run ${process.env.RUN_ID}`,
+              tree: tree.data.sha,
+              parents: baseCommitSha ? [baseCommitSha] : []
+            });
+
+            if (baseCommitSha) {
+              await github.rest.git.updateRef({
+                owner,
+                repo,
+                ref: `heads/${branch}`,
+                sha: commit.data.sha,
+                force: true
+              });
+            } else {
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/heads/${branch}`,
+                sha: commit.data.sha
+              });
+            }
+
+            core.notice(`Published ${contents.size} files to ${branch} in commit ${commit.data.sha.slice(0, 7)}`);
